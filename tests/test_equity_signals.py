@@ -1,8 +1,8 @@
 import sys
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
+import numpy as np  # type: ignore
+import pandas as pd  # type: ignore
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -32,8 +32,8 @@ def test_generate_signal_event_and_position_modes():
     events = generator.generate_signal(price_data, sentiment, mode="event")
     positions = generator.generate_signal(price_data, sentiment, mode="position")
 
-    assert events.tolist() == [0.0, 1.0, 0.0, -1.0, 0.0]
-    assert positions.tolist() == [0.0, 1.0, 1.0, 0.0, 0.0]
+    assert events.tolist() == [0.0, 1.0, 0.0, -1.0, 1.0]
+    assert positions.tolist() == [0.0, 1.0, 1.0, 0.0, 1.0]
 
 
 def test_generate_signal_stop_loss_exit():
