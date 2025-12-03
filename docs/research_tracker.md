@@ -16,7 +16,7 @@
 - Consolidated status reports into single `research_tracker.md`
 
 🎯 **Next Immediate Steps:**
-1. Equities multi-ticker aggregator & reporting (batch run top 20 tickers, heatmaps)
+1. ✅ **Equities multi-ticker aggregator & reporting** - Batch runs top 20 tickers with heatmaps, CSV/JSON/HTML reports
 2. Credit OAS CLI polish + FRED cache implementation
 3. Intraday delta/volume gating enhancements
 4. GitHub CI workflow setup (PAT/SSH configuration)
@@ -51,8 +51,9 @@
 ### 3.1 Equities (Mean Reversion + Sentiment)
 - **Pipeline:** Fetch OHLCV → blend sentiment (Finnhub/FMP/EODHD) → generate event/position signals → apply credit/VIX risk overlays → backtest with transaction costs.
 - **CLI:** `python -m src.main` with watchlists, multi-ticker runs, CSV/JSON exports, transaction cost + split flags.
-- **Tests:** ✅ **All 9 tests passing** — `tests/test_equity_*` covering fetchers, sentiment analyzer, signal generator (event & position modes), backtester math, OOS splits, transaction costs.
-- **Backlog:** Multi-ticker aggregator/heatmap, automatic benchmark overlay (SPY/60-40), crisis replay scripts, standardized report outputs.
+- **Aggregator:** `python src/equities/equity_aggregator_cli.py --top 20` - Batch analysis with parallel processing, comprehensive reports (CSV/JSON/HTML), and portfolio heatmaps.
+- **Tests:** ✅ **All 9 tests passing** (equity module) + **7 aggregator tests passing** — Complete coverage of fetchers, sentiment analyzer, signal generator (event & position modes), backtester math, OOS splits, transaction costs, and multi-ticker aggregation.
+- **Backlog:** Automatic benchmark overlay (SPY/60-40), crisis replay scripts, standardized report outputs.
 
 ### 3.2 Credit (HY vs IG)
 - **Features:** Aligns LQD/HYG, fetches HY OAS from FRED, trades by percentile regimes, sentiment sizing hooks.
@@ -117,7 +118,7 @@
 | --- | --- | --- |
 | Documentation | Project rebranding & tracker consolidation | ✅ Complete |
 | Equities | Test suite (all 9 tests passing) | ✅ Complete |
-| Equities | Multi-ticker aggregator & heatmap | 🔄 In Progress (Next) |
+| Equities | Multi-ticker aggregator & heatmap | ✅ Complete |
 | Equities | Benchmark overlay & crisis scripts | Planned |
 | Credit | CLI cleanup, FRED cache, trend variant | 🔄 Next Priority |
 | Volatility | VIX parser + contango strategy | Planned |

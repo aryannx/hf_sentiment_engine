@@ -158,7 +158,30 @@ python -m src.intraday \
   --support_levels 4800,4750
 ```
 
-All commands emit CSV/JSON reports in `reports/` (or `results/` once added). Use the Streamlit app for visual drill-down once `app/dashboard.py` is wired.
+### Multi-Ticker Equity Aggregator
+
+Run comprehensive portfolio analysis across multiple tickers with parallel processing and automated reporting:
+
+```bash
+# Analyze top 20 tickers
+python src/equities/equity_aggregator_cli.py --top 20
+
+# Analyze specific tickers
+python src/equities/equity_aggregator_cli.py --tickers AAPL MSFT GOOGL TSLA NVDA
+
+# Load from watchlist file
+python src/equities/equity_aggregator_cli.py --watchlist my_portfolio.txt --credit-overlay
+
+# Custom analysis with OOS validation
+python src/equities/equity_aggregator_cli.py --top 10 --period 2y --validate-oos --cost-bps 10
+```
+
+**Outputs:**
+- **CSV**: Tabular results for analysis
+- **JSON**: Structured data with metadata
+- **HTML**: Interactive report with performance tables
+
+All commands emit CSV/JSON/HTML reports in `reports/` (or custom `--output` directory). Use the Streamlit app for visual drill-down once `app/dashboard.py` is wired.
 
 ## Nightly Batch & Caching Workflow
 
