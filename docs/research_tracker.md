@@ -1,8 +1,25 @@
 # Modular Quant Platform – Master Tracker & Roadmap
 
-**Date:** December 3, 2025  
+**Date:** December 3, 2025 (Updated: December 3, 2025)  
 **Owner:** Aryan Nambiar  
 **Purpose:** Exhaustive tracker for everything we have built or promised across equities, credit, volatility, intraday, portfolio, AI copilot, execution, and documentation. This replaces all previous status docs.
+
+---
+
+## 0. Recent Progress (Last Session)
+
+✅ **Completed:**
+- Project rebranded from "HF Sentiment Engine" → "Modular Quant Platform" across all documentation
+- Equities module fully tested: **9/9 tests passing** (`test_equity_backtester`, `test_equity_data_fetcher`, `test_equity_sentiment_analyzer`, `test_equity_signals`)
+- Fixed signal generator test expectations to match actual event/position mode behavior
+- All documentation updates committed and pushed to GitHub (`main` branch)
+- Consolidated status reports into single `research_tracker.md`
+
+🎯 **Next Immediate Steps:**
+1. Equities multi-ticker aggregator & reporting (batch run top 20 tickers, heatmaps)
+2. Credit OAS CLI polish + FRED cache implementation
+3. Intraday delta/volume gating enhancements
+4. GitHub CI workflow setup (PAT/SSH configuration)
 
 ---
 
@@ -34,7 +51,7 @@
 ### 3.1 Equities (Mean Reversion + Sentiment)
 - **Pipeline:** Fetch OHLCV → blend sentiment (Finnhub/FMP/EODHD) → generate event/position signals → apply credit/VIX risk overlays → backtest with transaction costs.
 - **CLI:** `python -m src.main` with watchlists, multi-ticker runs, CSV/JSON exports, transaction cost + split flags.
-- **Tests:** `tests/test_equity_*` covering fetchers, sentiment analyzer, signal generator, backtester math.
+- **Tests:** ✅ **All 9 tests passing** — `tests/test_equity_*` covering fetchers, sentiment analyzer, signal generator (event & position modes), backtester math, OOS splits, transaction costs.
 - **Backlog:** Multi-ticker aggregator/heatmap, automatic benchmark overlay (SPY/60-40), crisis replay scripts, standardized report outputs.
 
 ### 3.2 Credit (HY vs IG)
@@ -98,16 +115,17 @@
 
 | Area | Task | Status |
 | --- | --- | --- |
-| Data | Cache registry + admin script | Planned |
-| Equities | Multi-ticker aggregator & heatmap | Planned |
+| Documentation | Project rebranding & tracker consolidation | ✅ Complete |
+| Equities | Test suite (all 9 tests passing) | ✅ Complete |
+| Equities | Multi-ticker aggregator & heatmap | 🔄 In Progress (Next) |
 | Equities | Benchmark overlay & crisis scripts | Planned |
-| Credit | CLI cleanup, FRED cache, trend variant | Planned |
+| Credit | CLI cleanup, FRED cache, trend variant | 🔄 Next Priority |
 | Volatility | VIX parser + contango strategy | Planned |
 | Intraday | Delta/volume gating, FX support, breakout mode | Planned |
 | Portfolio | Covariance + target-vol engine | Planned |
 | AI Copilot | Embedding + retrieval service | Planned |
 | Execution | Alpaca paper adapter, IBKR/Bloomberg bridge | Planned |
-| Ops | Re-enable CI, add release notes | Planned |
+| Ops | Re-enable CI, add release notes | 🔄 Next Priority |
 
 ---
 
@@ -122,15 +140,28 @@
 
 ## 7. Action Items
 
+### Tier 1 – Immediate (This Week)
+| Owner | Action | Status |
+| --- | --- | --- |
+| Aryan | ✅ Project rebrand & documentation consolidation | Complete |
+| Aryan | ✅ Equities module test suite verification | Complete |
+| Aryan | 🔄 Multi-ticker equity aggregator + reporting | In Progress |
+| Aryan | 🔄 Credit OAS CLI polish + FRED cache | Next |
+| Aryan | 🔄 Re-enable GitHub CI (PAT/SSH setup) | Next |
+
+### Tier 2 – Near-Term (1–2 Weeks)
 | Owner | Action | Target |
 | --- | --- | --- |
-| Aryan | Re-enable CI, set PAT/SSH | ASAP |
-| Aryan | Intraday delta/volume gating + FX support | ASAP |
-| Aryan | Multi-ticker equity runner + reporting | Mid Dec |
+| Aryan | Intraday delta/volume gating + FX support | Mid Dec |
 | Aryan | Build AI copilot MVP (embeddings + retrieval) | Mid Dec |
 | TBD | VIX parser & strategy | Late Dec |
 | TBD | Portfolio target-vol engine | Late Dec |
+
+### Tier 3 – Medium-Term (1–2 Months)
+| Owner | Action | Target |
+| --- | --- | --- |
 | TBD | Alpaca paper execution adapter | Early Jan |
+| TBD | Execution bridges (IBKR/Bloomberg) | Q1 2026 |
 
 ---
 
