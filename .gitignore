@@ -10,3 +10,7 @@ __pycache__/
 logs/
 data/raw/
 reports/
+notebooks/
+*.tmp
+*_tmp.txt
+*.ipynb
