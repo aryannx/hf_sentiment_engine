@@ -1,4 +1,4 @@
-# HF Sentiment Engine — Current Status Report  
+# Modular Quant Platform — Current Status Report  
 **Date:** December 3, 2025  
 **Author:** Aryan  
 **Scope:** Summarizes progress made in the local working tree relative to the baseline GitHub repo (`aryannx/hf_sentiment_engine`).
@@ -7,7 +7,7 @@
 
 ## 1. Executive Summary
 
-- **Platform** – Multi-asset research stack spanning equities, credit, and volatility with shared base classes, sentiment blending, and Streamlit dashboards.
+- **Platform** – Modular Quant Platform spanning equities, credit, volatility, and intraday modules with shared base classes, sentiment blending, and Streamlit dashboards.
 - **Recent Focus** – Hardened the equity pipeline (watchlists, OOS validation, transaction costs), formalized ops documentation, and expanded pytest coverage.
 - **Readiness** – Repo now ships onboarding docs (`README.md`, `docs/RUNBOOK.md`, `docs/status_report_current.md`), API key template (`env.example`), and reproducible CLI workflows for interviews or demo runs.
 
@@ -29,7 +29,7 @@
 ## 3. Architecture Snapshot
 
 ```text
-hf_sentiment_engine/
+modular_quant_platform/
 ├── app/                  Streamlit dashboards (credit/equity/vol views)
 ├── src/
 │   ├── core/             Base sentiment & signal abstractions
@@ -131,6 +131,7 @@ hf_sentiment_engine/
 3. **Volatility MVP** – Implement VIX term-structure parser + simple contango signal to feed portfolio manager.
 4. **Portfolio Allocator** – Replace placeholder Kelly sizing with covariance-aware target-vol scaling.
 5. **CI & Packaging** – Add lint/test GitHub Actions once repo is re-Git-enabled and secrets strategy finalized.
+6. **AI Research Copilot** – Build a repo-wide retrieval + LLM service (OpenAI/Anthropic/etc.) that indexes code, docs, reports, and lets users query “why did we take that trade?” or “summarize latest intraday signals.” Include `.env`-driven API keys and long-term plan for IDE/Slack hooks.
 
 ---
 
@@ -1267,7 +1268,7 @@ def compute_max_drawdown(equity_curve):
 ---
 
 **Document Version**: 1.0  
-**Last Updated**: December 2, 2025  
+**Last Updated**: December 3, 2025  
 **Contact**: [Your Email] | [GitHub](https://github.com/aryannx) | [LinkedIn](https://linkedin.com/in/your-profile)
 
 ---

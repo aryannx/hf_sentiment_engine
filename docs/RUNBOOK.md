@@ -1,4 +1,4 @@
-# HF Sentiment Engine – Operations Runbook
+# Modular Quant Platform – Operations Runbook
 
 > Living document for nightly research runs, data hygiene, and incident response. Update alongside code changes.
 

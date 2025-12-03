@@ -1,4 +1,4 @@
-# HF Sentiment Engine
+# Modular Quant Platform
 
 Multi-asset systematic research platform that mirrors an institutional hedge-fund workflow across equities, credit, and volatility. The system fuses technical signals, multi-source NLP sentiment, macro overlays, and portfolio construction so you can prototype strategies, run realistic backtests, and export production-ready signals.
 
@@ -187,5 +187,20 @@ pytest -q
 - 🚧 Current focus: documentation, multi-ticker equity runner, credit OAS filter, volatility module MVP, portfolio allocator, Streamlit dashboards, CI & tests
 - 🔜 Medium term: Monte Carlo envelopes, benchmark dashboards, AI research copilot (chatbot over local notebooks/logs), Bloomberg-style terminal adapter + execution bridges (IBKR/Bloomberg), asset-class expansion into options/derivatives, fixed income, and commodities
 
-Refer to [`hf.plan.md`](hf.plan.md) for the full implementation tracker and status.
+## Intraday Strategy Narrative (Interview Cheat Sheet)
+
+When explaining the intraday/HFT-lite module to funds or interviewers:
+
+- **Why it exists** – “I wanted a scalper strategy that never sleeps. It watches 1h/5m bars and only fires when price, RSI, and stochastic all scream ‘mean reversion’—exactly the kind of rare setup humans often miss.”
+- **Signal recipe** – RSI ≤16 (or ≥84) + price ≥2.5σ beyond Bollinger bands + slow stochastic cross. Optional confirmations for volume spikes, RSI divergence, or proximity to predefined support/resistance. Built-in regime detection so it only trades sideways markets unless a breakout flag is set.
+- **Data quality** – Pulls bars from Finnhub and Polygon (with yfinance fallback), meaning it can easily pivot to brokerage-grade data (Alpaca/IBKR) for execution. Indicators are engineered uniformly regardless of provider.
+- **Risk framing** – Scarce setups ⇒ low trade count but high win rate. Backtests enforce transaction costs, max-hold windows, and log every candidate event (even the ones filtered out) so PMs can audit scarcity vs discipline.
+- **Scalability** – The module already supports equities/futures/FX. Next steps include cumulative delta gating, options/fixed-income/commodities overlays, and an AI research copilot that can answer “show me every RSI≤12 signal in 2025 and how volume behaved.”
+- **Demo commands** – Showcase with:  
+  ```bash
+  python -m src.intraday --ticker ES=F --period 180d --interval 1h --provider polygon --style rare --confirmations volume,divergence --support_levels 4800,4750
+  ```
+  Mention that results export to JSON/CSV and can feed dashboards or execution adapters.
+
+Use this story to demonstrate short-horizon expertise, disciplined signal design, and a roadmap toward professional-grade execution and AI-assisted research.
 
