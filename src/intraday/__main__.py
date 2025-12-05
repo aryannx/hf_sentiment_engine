@@ -1,9 +1,12 @@
 import argparse
 import json
+import os
+import time
 from pathlib import Path
 from typing import List, Optional
 
 import pandas as pd
+from src.core.metrics import MetricsCollector
 
 from .intraday_backtester import IntradayBacktester
 from .intraday_data_fetcher import IntradayDataFetcher
@@ -24,6 +27,11 @@ def _parse_float_list(value: Optional[str]) -> Optional[List[float]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Intraday mean-reversion runner")
+    parser.add_argument(
+        "--healthcheck",
+        action="store_true",
+        help="Return OK and exit for monitoring probes.",
+    )
     parser.add_argument("--ticker", default="ES=F")
     parser.add_argument("--period", default="180d", help="yfinance lookback period")
     parser.add_argument("--interval", default="1h", help="Bar interval (1h, 5m, etc.)")
@@ -52,6 +60,14 @@ def main() -> None:
         help="Optional path to dump metrics JSON.",
     )
     args = parser.parse_args()
+
+    if args.healthcheck:
+        print("OK")
+        return
+
+    metrics_collector = MetricsCollector(enable=os.getenv("METRICS_ENABLED") == "1")
+    metrics_collector.counter("intraday_run_start", ticker=args.ticker, provider=args.provider)
+    start_time = time.time()
 
     fetcher = IntradayDataFetcher()
     data = fetcher.fetch(
@@ -86,6 +102,14 @@ def main() -> None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8") as handle:
             json.dump(metrics, handle, indent=2, default=_json_default)
+
+    metrics_collector.timer(
+        "intraday_run_runtime_s",
+        time.time() - start_time,
+        ticker=args.ticker,
+        provider=args.provider,
+    )
+    metrics_collector.counter("intraday_run_end", ticker=args.ticker, provider=args.provider)
 
 
 def _json_default(value):

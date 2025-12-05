@@ -11,7 +11,9 @@ End-to-end runner (equity pipeline, optionally with credit risk overlay):
 
 from datetime import datetime
 import json
+import os
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -25,6 +27,15 @@ from equities.equity_data_fetcher import EquityDataFetcher
 from equities.equity_sentiment_analyzer import EquitySentimentAnalyzer
 from equities.equity_signal_generator import EquitySignalGenerator
 from equities.equity_backtester import EquityBacktester
+from core.compliance_engine import ComplianceEngine
+from core.compliance_rules import default_compliance_config
+from core.oms_models import Order, OrderSide
+from core.oms_simulator import ExecutionSimulator
+from core.oms_config import ExecutionConfig
+from core.position_ledger import PositionLedger
+from pms.config import demo_pms_config
+from pms.rebalancer import Rebalancer
+from core.metrics import MetricsCollector
 
 try:
     from credit.credit_sentiment_analyzer import CreditSentimentAnalyzer
@@ -96,6 +107,8 @@ def run_equity_pipeline(
     cost_bps: float = 0.0,
     split_ratio: float = 1.0,
     validate_oos: bool = False,
+    simulate_execution: bool = False,
+    pms_rebalance: bool = False,
 ):
     """
     End-to-end equity sentiment + signal + backtest pipeline.
@@ -112,9 +125,32 @@ def run_equity_pipeline(
         "event"  -> one-bar trades (signals only on entry/exit)
         "position" -> hold position until explicit exit
     """
+    metrics_collector = MetricsCollector(enable=os.getenv("METRICS_ENABLED") == "1")
+    metrics_collector.counter("equity_pipeline_start", ticker=ticker, mode=mode)
+    start_time = time.time()
+
     print("=" * 80)
     print(f"SENTIMENT SIGNAL ENGINE – EQUITY PIPELINE [{ticker}] (mode={mode})")
     print("=" * 80)
+
+    # 0) Pre-trade compliance (basic single-name sizing assumption)
+    compliance_engine = ComplianceEngine(default_compliance_config())
+    proposed_notional = 100000.0  # align with backtester initial cash
+    pretrade = compliance_engine.evaluate_orders(
+        orders=[{"ticker": ticker, "notional": proposed_notional}],
+        portfolio_value=proposed_notional,
+    )
+    if pretrade["decision"] == "block":
+        print("❌ Compliance block:")
+        for res in pretrade["results"]:
+            if not res.passed and res.severity == "block":
+                print(f"   - {res.name}: {res.message}")
+        return None
+    elif any(r.severity == "warn" for r in pretrade["results"]):
+        print("⚠️ Compliance warnings:")
+        for res in pretrade["results"]:
+            if res.severity == "warn":
+                print(f"   - {res.name}: {res.message}")
 
     # 1) Fetch price data  --------------------
     fetcher = EquityDataFetcher()
@@ -184,16 +220,86 @@ def run_equity_pipeline(
 
     # 5) Backtest  --------------------
     print("\n📈 Running backtest...")
-    backtester = EquityBacktester(initial_cash=100000)
-    metrics = backtester.run_backtest(
-        ticker,
-        signals,
-        price_data,
-        risk_multiplier=risk_multiplier,
-        cost_bps=cost_bps,
-        split_ratio=split_ratio,
-        validate_oos=validate_oos,
+    if simulate_execution:
+        # Convert signals to orders (simple: trade on signal changes)
+        orders = []
+        last_sig = 0
+        for idx, sig in enumerate(signals):
+            if sig != last_sig:
+                side = OrderSide.BUY if sig > 0 else OrderSide.SELL
+                px = price_data.loc[idx, "Close"]
+                orders.append(
+                    Order(
+                        order_id=f"{ticker}-{idx}",
+                        ticker=ticker,
+                        side=side,
+                        qty=1.0,  # unit size; sizing would be extended later
+                        px=px,
+                    )
+                )
+                last_sig = sig
+
+        exec_sim = ExecutionSimulator(ExecutionConfig(slippage_bps=cost_bps))
+        ledger = PositionLedger(starting_cash=100000.0)
+
+        for o in orders:
+            o, fills = exec_sim.execute(o)
+            ledger.apply_fills(fills)
+
+        marks = {ticker: price_data["Close"].iloc[-1]}
+        eq_snap = ledger.snapshot(marks)
+        metrics = {
+            "starting_cash": 100000.0,
+            "final_value": eq_snap["equity"],
+            "pnl": eq_snap["equity"] - 100000.0,
+            "total_return": (eq_snap["equity"] - 100000.0) / 100000.0,
+            "sharpe": 0.0,  # not computed in this simple path
+            "max_drawdown": 0.0,
+            "trades": len(orders),
+            "period_days": len(price_data),
+            "cost_bps": cost_bps,
+            "mode": mode,
+            "validate_oos": validate_oos,
+            "strategy_report": {},
+        }
+    else:
+        backtester = EquityBacktester(initial_cash=100000)
+        metrics = backtester.run_backtest(
+            ticker,
+            signals,
+            price_data,
+            risk_multiplier=risk_multiplier,
+            cost_bps=cost_bps,
+            split_ratio=split_ratio,
+            validate_oos=validate_oos,
+        )
+
+    # Optional PMS rebalance proposal (demo config, single-account)
+    if pms_rebalance:
+        prices = {ticker: price_data["Close"].iloc[-1]}
+        cfg = demo_pms_config()
+        rebalancer = Rebalancer()
+        proposal = rebalancer.compute_rebalance(cfg.portfolios[0], prices)
+        print("\n📑 PMS Rebalance Proposal")
+        print(f"Portfolio: {proposal.portfolio}, turnover={proposal.turnover:.2%}")
+        for o in proposal.orders:
+            print(f"  {o.side} {o.qty:.2f} {o.ticker} @ {o.px:.2f}")
+
+    # 5b) Post-trade compliance scaffold (current portfolio notionally at final value)
+    posttrade = compliance_engine.post_trade_check(
+        positions=[{"ticker": ticker, "notional": metrics.get("final_value", 0.0)}],
+        portfolio_value=metrics.get("final_value", 0.0),
     )
+    if posttrade["decision"] == "block":
+        print("❌ Post-trade compliance block recorded (no execution taken):")
+        for res in posttrade["results"]:
+            if not res.passed and res.severity == "block":
+                print(f"   - {res.name}: {res.message}")
+    elif any(r.severity == "warn" for r in posttrade["results"]):
+        print("⚠️ Post-trade compliance warnings recorded:")
+        for res in posttrade["results"]:
+            if res.severity == "warn":
+                print(f"   - {res.name}: {res.message}")
 
     # 6) Strategy-level metrics from base class  --------------------
     print("\n📊 Computing strategy metrics (BaseSignalGenerator)...")
@@ -218,6 +324,11 @@ def run_equity_pipeline(
     print(f"Backtester Max DD:     {metrics['max_drawdown']:.2%}")
     print("=" * 80)
 
+    metrics_collector.timer(
+        "equity_pipeline_runtime_s", time.time() - start_time, ticker=ticker, mode=mode
+    )
+    metrics_collector.counter("equity_pipeline_end", ticker=ticker, mode=mode)
+
     metrics["strategy_report"] = report
     return metrics
 
@@ -226,6 +337,11 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--healthcheck",
+        action="store_true",
+        help="Return OK and exit for monitoring probes.",
+    )
     parser.add_argument("--ticker", default="SNAP", help="Equity ticker symbol")
     parser.add_argument(
         "--tickers",
@@ -271,6 +387,10 @@ if __name__ == "__main__":
         help="Directory where aggregated CSV/JSON outputs will be stored.",
     )
     args = parser.parse_args()
+
+    if args.healthcheck:
+        print("OK")
+        sys.exit(0)
 
     requested_tickers: List[str] = []
     if args.tickers:

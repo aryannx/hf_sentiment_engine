@@ -15,21 +15,20 @@ from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
+import os
+import time
 
 from src.core.base_signal_generator import BaseSignalGenerator
 from src.credit.credit_data_fetcher import CreditDataFetcher
 from src.credit.credit_sentiment_analyzer import CreditSentimentAnalyzer
 from src.credit.credit_signal_generator import CreditSignalGenerator
-
-# Ensure project root (folder that contains src/) is on sys.path
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
-
-# IMPORTANT: absolute imports from core/credit (same style as before)
-from core.base_signal_generator import BaseSignalGenerator
-from credit.credit_data_fetcher import CreditDataFetcher
-from credit.credit_sentiment_analyzer import CreditSentimentAnalyzer
-from credit.credit_signal_generator import CreditSignalGenerator
+from src.core.compliance_engine import ComplianceEngine
+from src.core.compliance_rules import default_compliance_config
+from src.core.oms_models import Order, OrderSide
+from src.core.oms_simulator import ExecutionSimulator
+from src.core.oms_config import ExecutionConfig
+from src.core.position_ledger import PositionLedger
+from src.core.metrics import MetricsCollector
 
 
 @dataclass
@@ -57,12 +56,40 @@ class CreditBacktester:
         use_percentile_filter: bool = True,
         lower_percentile: float = 10.0,
         upper_percentile: float = 90.0,
+        use_oas_cache: bool = True,
+        cache_path: Optional[str] = None,
+        ig_oas_series_id: str = "BAMLC0A0CM",
+        hy_oas_series_id: str = "BAMLH0A0HYM2",
+        simulate_execution: bool = False,
     ) -> Dict[str, float]:
         """
         End-to-end credit backtest for IG vs HY pair.
         """
+        metrics_collector = MetricsCollector(enable=os.getenv("METRICS_ENABLED") == "1")
+        metrics_collector.counter("credit_backtest_start", ig=ig_ticker, hy=hy_ticker)
+        start_time = time.time()
+        # 0) Pre-trade compliance (two-leg notional assumption)
+        engine = ComplianceEngine(default_compliance_config())
+        per_leg = self.notional_per_leg * 100000.0  # interpret notional_per_leg as scaling of base
+        pretrade = engine.evaluate_orders(
+            orders=[
+                {"ticker": ig_ticker, "notional": per_leg},
+                {"ticker": hy_ticker, "notional": per_leg},
+            ],
+            portfolio_value=self.initial_cash,
+        )
+        if pretrade["decision"] == "block":
+            raise RuntimeError(
+                "Compliance block before credit backtest: "
+                + "; ".join([r.message for r in pretrade["results"] if not r.passed])
+            )
+
         # 1) Prices
-        fetcher = CreditDataFetcher()
+        fetcher = CreditDataFetcher(
+            cache_path=cache_path,
+            ig_oas_series_id=ig_oas_series_id,
+            hy_oas_series_id=hy_oas_series_id,
+        )
         etfs = fetcher.fetch_ig_hy_pair(period=period, interval="1d")
         ig_df = etfs.get(ig_ticker)
         hy_df = etfs.get(hy_ticker)
@@ -75,7 +102,7 @@ class CreditBacktester:
         # 2) OAS spreads
         start_oas = aligned.index.min().strftime("%Y-%m-%d")
         end_oas = aligned.index.max().strftime("%Y-%m-%d")
-        oas_df = fetcher.fetch_oas_pair(start=start_oas, end=end_oas)
+        oas_df = fetcher.fetch_oas_pair(start=start_oas, end=end_oas, use_cache=use_oas_cache)
 
         # 3) Sentiment
         if sentiment_start is None:
@@ -101,27 +128,62 @@ class CreditBacktester:
             upper_percentile=upper_percentile,
         )
 
-        # 5) Strategy returns
-        strat_ret = sig_gen.compute_pair_trade_returns(
-            aligned_df=aligned,
-            signals=signals,
-            notional=self.notional_per_leg,
-        )
+        if simulate_execution:
+            orders: list[Order] = []
+            last_sig = 0
+            for dt, sig in zip(aligned.index, signals):
+                if sig != last_sig:
+                    side = OrderSide.BUY if sig > 0 else OrderSide.SELL
+                    px = aligned.loc[dt, "close_hy"]  # use HY leg as proxy
+                    orders.append(
+                        Order(
+                            order_id=f"{dt.strftime('%Y%m%d')}",
+                            ticker=hy_ticker if sig < 0 else ig_ticker,
+                            side=side,
+                            qty=1.0,
+                            px=px,
+                        )
+                    )
+                    last_sig = sig
 
-        # 6) Metrics
-        sharpe = self.metric_helper.calculate_sharpe_ratio(strat_ret)
-        max_dd = self.metric_helper.calculate_max_drawdown(strat_ret)
+            exec_sim = ExecutionSimulator(ExecutionConfig(slippage_bps=cost_bps))
+            ledger = PositionLedger(starting_cash=self.initial_cash)
+            for o in orders:
+                o, fills = exec_sim.execute(o)
+                ledger.apply_fills(fills)
+            marks = {
+                ig_ticker: aligned["close_ig"].iloc[-1],
+                hy_ticker: aligned["close_hy"].iloc[-1],
+            }
+            eq_snap = ledger.snapshot(marks)
+            final_value = eq_snap["equity"]
+            pnl = final_value - self.initial_cash
+            total_return = pnl / self.initial_cash if self.initial_cash else 0.0
+            sharpe = 0.0
+            max_dd = 0.0
+            trade_count = len(orders)
+        else:
+            # 5) Strategy returns
+            strat_ret = sig_gen.compute_pair_trade_returns(
+                aligned_df=aligned,
+                signals=signals,
+                notional=self.notional_per_leg,
+            )
 
-        equity_curve = self._equity_from_returns(strat_ret, self.initial_cash)
-        final_value = float(equity_curve.iloc[-1])
-        pnl = final_value - self.initial_cash
-        total_return = pnl / self.initial_cash if self.initial_cash != 0 else 0.0
+            # 6) Metrics
+            sharpe = self.metric_helper.calculate_sharpe_ratio(strat_ret)
+            max_dd = self.metric_helper.calculate_max_drawdown(strat_ret)
 
-        sig_series = pd.Series(signals, index=aligned.index)
-        sig_changes = sig_series.diff().fillna(0.0) != 0.0
-        trade_count = int(sig_changes.sum())
+            equity_curve = self._equity_from_returns(strat_ret, self.initial_cash)
+            final_value = float(equity_curve.iloc[-1])
+            pnl = final_value - self.initial_cash
+            total_return = pnl / self.initial_cash if self.initial_cash != 0 else 0.0
 
-        return {
+            sig_series = pd.Series(signals, index=aligned.index)
+            sig_changes = sig_series.diff().fillna(0.0) != 0.0
+            trade_count = int(sig_changes.sum())
+
+        metrics = {
             "starting_cash": self.initial_cash,
             "final_value": final_value,
             "pnl": pnl,
@@ -139,6 +201,31 @@ class CreditBacktester:
             "lower_percentile": lower_percentile,
             "upper_percentile": upper_percentile,
         }
+
+        # 7) Post-trade compliance scaffold
+        posttrade = engine.post_trade_check(
+            positions=[
+                {"ticker": ig_ticker, "notional": final_value / 2},
+                {"ticker": hy_ticker, "notional": final_value / 2},
+            ],
+            portfolio_value=final_value,
+        )
+        if posttrade["decision"] == "block":
+            print("❌ Post-trade compliance block recorded (no execution taken):")
+            for res in posttrade["results"]:
+                if not res.passed and res.severity == "block":
+                    print(f"   - {res.name}: {res.message}")
+        elif any(r.severity == "warn" for r in posttrade["results"]):
+            print("⚠️ Post-trade compliance warnings recorded:")
+            for res in posttrade["results"]:
+                if res.severity == "warn":
+                    print(f"   - {res.name}: {res.message}")
+
+        metrics_collector.timer(
+            "credit_backtest_runtime_s", time.time() - start_time, ig=ig_ticker, hy=hy_ticker
+        )
+        metrics_collector.counter("credit_backtest_end", ig=ig_ticker, hy=hy_ticker)
+        return metrics
 
     @staticmethod
     def _equity_from_returns(returns: pd.Series, initial_cash: float) -> pd.Series:
@@ -172,6 +259,11 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Test IG vs HY credit backtester")
+    parser.add_argument(
+        "--healthcheck",
+        action="store_true",
+        help="Return OK and exit for monitoring probes.",
+    )
     parser.add_argument("--period", default="1y", help="History period (yfinance style)")
     parser.add_argument("--sent_thr", type=float, default=0.05)
     parser.add_argument("--z_window", type=int, default=60)
@@ -179,7 +271,31 @@ if __name__ == "__main__":
     parser.add_argument("--use_percentile", action="store_true")
     parser.add_argument("--lower_pct", type=float, default=10.0)
     parser.add_argument("--upper_pct", type=float, default=90.0)
+    parser.add_argument(
+        "--cache_path",
+        default="data/raw/fred_oas.pkl",
+        help="Path to cache OAS data (pickle).",
+    )
+    parser.add_argument(
+        "--no_cache",
+        action="store_true",
+        help="Disable OAS caching (fetch fresh from FRED).",
+    )
+    parser.add_argument(
+        "--ig_oas_series",
+        default="BAMLC0A0CM",
+        help="FRED series ID for IG OAS (default BAMLC0A0CM).",
+    )
+    parser.add_argument(
+        "--hy_oas_series",
+        default="BAMLH0A0HYM2",
+        help="FRED series ID for HY OAS (default BAMLH0A0HYM2).",
+    )
     args = parser.parse_args()
+
+    if args.healthcheck:
+        print("OK")
+        raise SystemExit(0)
 
     bt = CreditBacktester(initial_cash=100000.0, notional_per_leg=1.0)
 
@@ -187,7 +303,8 @@ if __name__ == "__main__":
         f"📈 Running credit pair backtest "
         f"(LQD vs HYG, period={args.period}, "
         f"sent_thr={args.sent_thr}, z_win={args.z_window}, z={args.z_thr}, "
-        f"percentile={args.use_percentile})..."
+        f"percentile={args.use_percentile}, cache={'off' if args.no_cache else args.cache_path}, "
+        f"IG_OAS={args.ig_oas_series}, HY_OAS={args.hy_oas_series})..."
     )
     metrics = bt.run_backtest(
         period=args.period,
@@ -197,6 +314,10 @@ if __name__ == "__main__":
         use_percentile_filter=args.use_percentile,
         lower_percentile=args.lower_pct,
         upper_percentile=args.upper_pct,
+        use_oas_cache=not args.no_cache,
+        cache_path=args.cache_path,
+        ig_oas_series_id=args.ig_oas_series,
+        hy_oas_series_id=args.hy_oas_series,
     )
     bt.report(metrics)
     print("\n✅ Credit backtest complete!")

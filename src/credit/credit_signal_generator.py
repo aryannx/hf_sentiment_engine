@@ -22,18 +22,13 @@ Enhancement:
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
-
-from core.base_signal_generator import BaseSignalGenerator
+from src.core.base_signal_generator import BaseSignalGenerator
 
 
 @dataclass

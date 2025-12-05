@@ -11,6 +11,8 @@ import pandas as pd
 import yfinance as yf
 
 import warnings
+from src.data.validators import run_validations
+from src.data.lineage import log_lineage, checksum_df
 
 # Suppress yfinance future warnings
 warnings.filterwarnings("ignore", category=FutureWarning, module="yfinance")
@@ -84,6 +86,15 @@ class EquityDataFetcher:
             # Add technical indicators if requested
             if add_indicators:
                 data = self._add_indicators(data)
+
+            # Data quality checks
+            dq_msgs = run_validations(data, required_cols=["Date", "Close"])
+            if dq_msgs:
+                print("⚠️ Data quality warnings:", "; ".join(dq_msgs))
+            log_lineage(
+                "yfinance",
+                {"ticker": ticker, "period": period, "interval": interval, "dq": dq_msgs, "checksum": checksum_df(data)},
+            )
 
             return data.dropna()
 

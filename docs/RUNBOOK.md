@@ -105,6 +105,18 @@ Before merging to `main` or cutting a release:
 | Stale sentiment values | Recompute using local NLP fallback (`python scripts/offline_sentiment.py`). |
 | Portfolio volatility > target | Auto-scale notional via `portfolio_manager`, log override reason, rerun allocation. |
 
+## 9. Healthchecks & Metrics (Scaffold)
+
+- Health probes: `python -m src.main --healthcheck`, `python -m src.credit.credit_backtester --healthcheck`, `python -m src.intraday --healthcheck`.
+- Metrics/heartbeat files: `logs/metrics/metrics_*.jsonl` when `METRICS_ENABLED=1` is set.
+- Alerts: written to `logs/alerts/alerts_*.jsonl`; optional webhook via `ALERT_WEBHOOK_URL`.
+
+## 10. Backup / DR (Scaffold)
+
+- Ad-hoc snapshot: `bash scripts/backup.sh` (archives `logs`, `reports`, `data/raw`, `data/cache` into `backups/<timestamp>/`).
+- Verify backups: `ls backups/` and inspect latest tarballs.
+- On-call checklist: see `docs/dr_checklist.md` for step-by-step probes and incident logging.
+
 ---
 
 Document owner: Aryan Nambiar • Last updated: December 3, 2025. Update immediately when workflow changes.

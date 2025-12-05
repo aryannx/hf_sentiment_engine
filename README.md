@@ -183,6 +183,57 @@ python src/equities/equity_aggregator_cli.py --top 10 --period 2y --validate-oos
 
 All commands emit CSV/JSON/HTML reports in `reports/` (or custom `--output` directory). Use the Streamlit app for visual drill-down once `app/dashboard.py` is wired.
 
+## Compliance (Pre/Post-Trade Scaffolding)
+
+- **Engine:** `src/core/compliance_engine.py` with configurable limits (`max_positions`, `max_single_name_pct`, `max_gross_notional`, leverage, turnover placeholders).
+- **Rules:** defaults live in `src/core/compliance_rules.py` (pass/warn/block with audit-friendly messages).
+- **Audit:** JSONL logs in `logs/compliance/` (gitignored) for pre/post-trade checks.
+- **Equities:** `src/main.py` and `src/equities/equity_aggregator_cli.py` run pre-trade checks on proposed tickers (equal-weight assumption); blocks halt runs, warnings are surfaced.
+- **Credit:** `src/credit/credit_backtester.py` checks IG/HY legs before backtest; post-trade stub records results after backtest.
+- **Extending:** swap limits via constructor or future config file; ready for OMS/FIX adapters and richer rule sets (sector/issuer/mandate).
+
+## OMS / Execution Simulation (Scaffold)
+
+- **Domain models:** Orders, fills, routes in `src/core/oms_models.py`; execution config in `src/core/oms_config.py`.
+- **Simulator:** `src/core/oms_simulator.py` applies slippage/partial fills, logs to `logs/oms/`.
+- **Ledger:** `src/core/position_ledger.py` tracks cash/positions/realized PnL using marks.
+- **Integration:** `src/main.py` (equities) and `src/credit/credit_backtester.py` can run with `simulate_execution=True` to consume fills instead of idealized fills; current sizing is simple and can be extended.
+- **Reports:** Order/fill audits go to JSONL; TCA hooks ready for extension. Next: broker/FIX adapters and richer allocation/sizing + full TCA.
+
+## PMS (Portfolio Management Scaffold)
+
+- **Models/Config:** `src/pms/models.py`, `src/pms/config.py` (portfolio/account, targets, drift/turnover caps, cash buffer).
+- **Rebalancer:** `src/pms/rebalancer.py` computes drift vs targets, turnover cap, cash buffer; outputs rebalance orders.
+- **Attribution:** `src/pms/attribution.py` for simple contribution/benchmark excess (factor stubs later).
+- **Risk:** `src/pms/risk.py` gross/net exposure, leverage, stress bump placeholder.
+- **Hook:** `src/main.py` demo flag `pms_rebalance=True` prints a rebalance proposal using demo config.
+- **Next:** multi-portfolio configs, account-level allocation, richer margin models, and piping rebalance orders into OMS sim for execution.
+
+## Data Quality & Reconciliation (Scaffold)
+
+- **Lineage:** `src/data/lineage.py` logs source/timestamp/checksum to `logs/data_lineage/`.
+- **Validators:** `src/data/validators.py` for staleness, schema, NaN, and spike checks.
+- **Cross-source:** `src/data/cross_source.py` compares primary vs secondary prices with tolerance.
+- **Integration:** Equity and credit fetchers run validators and log lineage on download.
+- **Position recon:** `src/data/position_recon.py` compares fund positions to broker/custodian CSVs (leverages middle-office recon).
+- **Tests:** `tests/test_data_validators.py`, `tests/test_position_recon.py`.
+
+## Production Infra & Monitoring (Scaffold)
+
+- **Structured logs & healthchecks:** JSON logs helper in `src/core/logging_utils.py`; `--healthcheck` flags on equity/credit/intraday CLIs for probes.
+- **Metrics/heartbeat:** `src/core/metrics.py` writes counters/timers to `logs/metrics/` when `METRICS_ENABLED=1`.
+- **Alerts:** `src/core/notifier.py` logs alerts to `logs/alerts/` and optionally posts to `ALERT_WEBHOOK_URL`.
+- **Backups:** `scripts/backup.sh` snapshots `logs`, `reports`, and `data` to `backups/<timestamp>/`.
+- **DR checklist:** `docs/dr_checklist.md`; operational details live in `docs/RUNBOOK.md`.
+
+## Regulatory & Investor Reporting (Scaffold)
+
+- **Holdings/Perf helpers:** `src/reporting/holdings.py` (13F-like snapshot, top holdings) and `src/reporting/performance.py` (perf summary: return, Sharpe, Sortino, max DD, monthly returns).
+- **Templates:** `docs/templates/investor_letter.md`, `docs/templates/regulatory_summary.md` (filled into Markdown outputs).
+- **Audit:** `src/reporting/audit.py` logs generation/approvals to `logs/reporting/` (JSONL).
+- **CLI:** `src/reporting/generate_reports.py` takes positions/equity CSVs and emits Markdown + CSV/JSON to `reports/investor/` and `reports/regulatory/`.
+- **Note:** Offline only—no real EDGAR/MiFID submissions; placeholders to show workflow readiness.
+
 ## Nightly Batch & Caching Workflow
 
 1. Kick off `python -m src.data_pipeline` (planned) or `src/main.py` watchlists after market close.

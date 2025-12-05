@@ -7,15 +7,10 @@ Aggregates Finnhub + EODHD news with credit-specific keywords.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-from equities.equity_sentiment_analyzer import EquitySentimentAnalyzer
-
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+from src.equities.equity_sentiment_analyzer import EquitySentimentAnalyzer
 
 
 class CreditSentimentAnalyzer:

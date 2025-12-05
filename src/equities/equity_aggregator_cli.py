@@ -19,6 +19,8 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from equities.equity_aggregator import EquityAggregator, get_top_tickers
+from core.compliance_engine import ComplianceEngine
+from core.compliance_rules import default_compliance_config
 
 
 def main():
@@ -120,6 +122,21 @@ def main():
             return 1
 
         print(f"📊 Running on {len(tickers)} tickers from watchlist")
+
+    # Pre-trade compliance on the universe (equal notionals assumption)
+    engine = ComplianceEngine(default_compliance_config())
+    pretrade = engine.evaluate_universe(tickers, portfolio_value=100000.0)
+    if pretrade["decision"] == "block":
+        print("❌ Compliance block on universe:")
+        for res in pretrade["results"]:
+            if not res.passed and res.severity == "block":
+                print(f"   - {res.name}: {res.message}")
+        return 1
+    elif any(r.severity == "warn" for r in pretrade["results"]):
+        print("⚠️ Compliance warnings on universe:")
+        for res in pretrade["results"]:
+            if res.severity == "warn":
+                print(f"   - {res.name}: {res.message}")
 
     # Initialize aggregator
     aggregator = EquityAggregator()

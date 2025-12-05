@@ -14,12 +14,17 @@
 - Fixed signal generator test expectations to match actual event/position mode behavior
 - All documentation updates committed and pushed to GitHub (`main` branch)
 - Consolidated status reports into single `research_tracker.md`
+- CI workflow added (pytest on push/PR); release notes file created
+- OMS/Middle Office scaffolds: orders/fills simulator, booking/recon/IBOR stubs, compliance hooks
+- PMS scaffold: targets, drift/turnover caps, cash buffer, attribution/risk stubs, demo rebalance hook
+- Data Quality scaffold: lineage logging, validators, cross-source check, position recon vs broker CSVs
+- Reporting scaffold: 13F-like holdings/perf helpers, investor/reg templates, audit logs, CLI generator
 
 🎯 **Next Immediate Steps:**
-1. ✅ **Equities multi-ticker aggregator & reporting** - Batch runs top 20 tickers with heatmaps, CSV/JSON/HTML reports
-2. Credit OAS CLI polish + FRED cache implementation
-3. Intraday delta/volume gating enhancements
-4. GitHub CI workflow setup (PAT/SSH configuration)
+1. Intraday delta/volume gating + FX/Alpaca symbols
+2. AI copilot MVP (embeddings + retrieval + CLI)
+3. Volatility MVP (VIX parser/strategy) and portfolio covariance/target-vol engine
+4. Data pipeline scheduler + alerts for data quality
 
 ---
 
@@ -71,18 +76,25 @@
 - **Tests:** `pytest tests/test_intraday_signals.py`.
 - **Next:** Add cumulative delta + volume gating, extend CLI to FX symbols, feed logs to AI copilot, implement breakout mode, hook into Alpaca/IBKR.
 
-### 3.5 Portfolio & Risk
-- **Now:** Kelly-style weights.
-- **Next:** Rolling covariance matrix, target-vol scaling, correlation dashboards, marginal contribution analysis, risk gating based on credit/vol signals.
+### 3.5 Portfolio & Risk / PMS
+- **Current:** PMS scaffold with targets, drift/turnover caps, cash buffer, simple attribution and risk stubs (`src/pms/*`), demo rebalance hook in `src/main.py` (`pms_rebalance=True`).
+- **Next:** Multi-portfolio configs, account-level allocation, richer margin models, OMS execution of rebalance orders.
 
 ### 3.6 AI Research Copilot
 - **Vision:** Repo-wide assistant answering “Why did ES trade?” or “Summarize last night’s credit OAS run.”
 - **Implementation plan:** Embedding pipeline + vector DB → retrieval-augmented LLM service (OpenAI/Anthropic), CLI/Slack interfaces, and safe tool execution (rerun backtests, fetch logs) with audit.
 
-### 3.7 Execution Bridges
-- **Short-term:** Alpaca paper adapter.
-- **Mid-term:** IBKR API (TWS) integration, slippage logging.
-- **Long-term:** Bloomberg EMSX / blpapi adapter and terminal-style command suite.
+### 3.7 Execution Bridges & OMS/Middle Office
+- **Current:** OMS scaffold (orders/routes/fills, simulated execution, TCA hooks, position ledger), middle-office booking/recon/IBOR stubs; compliance pre/post-trade checks.
+- **Next:** Alpaca paper adapter, IBKR/Bloomberg bridges, richer TCA; broker/custodian feeds into recon and booking.
+
+### 3.8 Data Quality & Reconciliation
+- **Current:** Lineage logging, staleness/schema/anomaly validators, optional cross-source price checks, position recon vs broker CSVs.
+- **Next:** Data pipeline scheduler, dashboards/alerts, cross-source expansion.
+
+### 3.9 Regulatory & Investor Reporting
+- **Current:** Offline reporting scaffold (13F-like holdings, perf summaries, investor letter/reg summary templates, audit logs, CLI generator).
+- **Next:** Flesh out templates, add stress/attribution inserts, binder packaging.
 
 ---
 
@@ -91,16 +103,14 @@
 ### Immediate (1–2 Weeks)
 1. Re-enable GitHub CI (PAT/SSH) + lint/test workflow.  
 2. Intraday delta/volume gating + FX/Alpaca symbols.  
-3. Equities multi-ticker aggregation & reporting.  
-4. Credit OAS CLI polish + FRED cache.  
-5. AI copilot skeleton (embeddings + retrieval).  
-6. Data pipeline scaffolding + cache admin script.
+3. AI copilot skeleton (embeddings + retrieval).  
+4. Data pipeline scaffolding + cache admin script + data-quality alerts.  
 
 ### Near-Term (1–2 Months)
 1. Volatility MVP (VIX parser + strategy).  
-2. Portfolio target-vol scaling + correlation dashboard.  
+2. Portfolio target-vol scaling + correlation dashboard (extend PMS).  
 3. Benchmark + Monte Carlo tooling.  
-4. Alpaca paper execution prototype.  
+4. Alpaca paper execution prototype + OMS routing.  
 5. AI copilot beta (CLI + Slack bot with citations).
 
 ### Medium-Term (Quarter)
@@ -120,13 +130,19 @@
 | Equities | Test suite (all 9 tests passing) | ✅ Complete |
 | Equities | Multi-ticker aggregator & heatmap | ✅ Complete |
 | Equities | Benchmark overlay & crisis scripts | Planned |
-| Credit | CLI cleanup, FRED cache, trend variant | 🔄 Next Priority |
+| Credit | CLI cleanup + FRED cache (done); trend variant pending | 🟡 Partial |
 | Volatility | VIX parser + contango strategy | Planned |
 | Intraday | Delta/volume gating, FX support, breakout mode | Planned |
 | Portfolio | Covariance + target-vol engine | Planned |
 | AI Copilot | Embedding + retrieval service | Planned |
 | Execution | Alpaca paper adapter, IBKR/Bloomberg bridge | Planned |
-| Ops | Re-enable CI, add release notes | 🔄 Next Priority |
+| OMS | Order/route/fill scaffold + simulated execution | ✅ Complete |
+| PMS | Rebalance/attribution/risk scaffold | ✅ Complete |
+| Reporting | Regulatory-style extracts + investor letters scaffold | ✅ Complete |
+| Data Quality | Lineage + validators + recon scaffold | ✅ Complete |
+| Compliance | Pre-trade checks + audit logging scaffold | ✅ Complete |
+| Ops | Re-enable CI, add release notes | ✅ Complete |
+| Ops | Production monitoring scaffold (logging, healthchecks, metrics, alerts, backups) | ✅ Complete |
 
 ---
 
@@ -146,9 +162,11 @@
 | --- | --- | --- |
 | Aryan | ✅ Project rebrand & documentation consolidation | Complete |
 | Aryan | ✅ Equities module test suite verification | Complete |
-| Aryan | 🔄 Multi-ticker equity aggregator + reporting | In Progress |
-| Aryan | 🔄 Credit OAS CLI polish + FRED cache | Next |
-| Aryan | 🔄 Re-enable GitHub CI (PAT/SSH setup) | Next |
+| Aryan | ✅ Multi-ticker equity aggregator + reporting (validated) | Complete |
+| Aryan | ✅ Credit OAS CLI polish + FRED cache | Complete |
+| Aryan | ✅ Re-enable GitHub CI (PAT/SSH setup) | Complete |
+| Aryan | ✅ Add compliance pre/post-trade scaffold + audit logs | Complete |
+| Aryan | ✅ Add structured logging, healthchecks, metrics/alerts, backups scaffold | Complete |
 
 ### Tier 2 – Near-Term (1–2 Weeks)
 | Owner | Action | Target |
@@ -166,5 +184,5 @@
 
 ---
 
-**Current Status:** ✅ Platform MVP (equities + credit skeleton + intraday) is functional and documented. Focus now: delta filters, multi-asset expansion (vol/options/fixed income/commodities), AI copilot service, and professional execution bridges so the Modular Quant Platform mirrors real hedge-fund workflows end-to-end.
+**Current Status:** ✅ Platform MVP (equities + credit skeleton + intraday) is functional and documented, now with production-ops scaffolds (healthchecks, metrics/alerts, backups). Focus: delta filters, multi-asset expansion (vol/options/fixed income/commodities), AI copilot service, and professional execution bridges so the Modular Quant Platform mirrors real hedge-fund workflows end-to-end.
 
