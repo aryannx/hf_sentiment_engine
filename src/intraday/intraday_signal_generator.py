@@ -36,7 +36,7 @@ class IntradaySignalGenerator(BaseSignalGenerator):
                     "rsi_low": 16,
                     "rsi_high": 84,
                     "band_distance": 2.5,
-                    "delta_neutral": 0.35,
+                    "delta_neutral_z": 0.75,
                     "volume_mult": 1.10,
                     "support_tolerance": 0.003,  # 30 bps
                     "use_slow": True,
@@ -47,12 +47,24 @@ class IntradaySignalGenerator(BaseSignalGenerator):
                     "rsi_low": 20,
                     "rsi_high": 80,
                     "band_distance": 1.2,
-                    "delta_neutral": 0.5,
+                    "delta_neutral_z": 1.0,
                     "volume_mult": 1.0,
                     "support_tolerance": 0.005,
                     "use_slow": False,
                     "max_regime_width": 0.12,
                     "ema_slope_limit": 0.35,
+                },
+                # Crawford-inspired parameters (slow stoch + RSI extremes + BB excursions)
+                "crawford": {
+                    "rsi_low": 16,
+                    "rsi_high": 84,
+                    "band_distance": 2.0,
+                    "delta_neutral_z": 0.75,
+                    "volume_mult": 1.05,
+                    "support_tolerance": 0.004,
+                    "use_slow": True,
+                    "max_regime_width": 0.12,
+                    "ema_slope_limit": 0.25,
                 },
             }
 
@@ -90,6 +102,7 @@ class IntradaySignalGenerator(BaseSignalGenerator):
         style: str = "rare",
         confirmations: Optional[Iterable[str]] = None,
         delta_series: Optional[pd.Series] = None,
+        delta_z_series: Optional[pd.Series] = None,
         support_levels: Optional[Iterable[float]] = None,
         allow_breakout: bool = False,
     ) -> pd.DataFrame:
@@ -99,6 +112,8 @@ class IntradaySignalGenerator(BaseSignalGenerator):
         df = data.reset_index(drop=True).copy()
         if delta_series is not None:
             delta_series = delta_series.reindex(df.index).ffill()
+        if delta_z_series is not None:
+            delta_z_series = delta_z_series.reindex(df.index).ffill()
 
         k_col = "SLOW_K" if cfg["use_slow"] else "FAST_K"
         d_col = "SLOW_D" if cfg["use_slow"] else "FAST_D"
@@ -133,8 +148,8 @@ class IntradaySignalGenerator(BaseSignalGenerator):
             if not self._regime_allows(row, cfg, allow_breakout, direction):
                 continue
 
-            if delta_series is not None:
-                if abs(float(delta_series.iloc[idx])) > cfg["delta_neutral"]:
+            if delta_z_series is not None:
+                if abs(float(delta_z_series.iloc[idx])) > cfg["delta_neutral_z"]:
                     continue
 
             context = self._context_snapshot(df, idx)
@@ -255,5 +270,7 @@ class IntradaySignalGenerator(BaseSignalGenerator):
                 parts.append("rsi_divergence")
             elif item == "support":
                 parts.append("near_support")
+            elif item == "delta":
+                parts.append("delta_neutral")
         return ",".join(parts)
 

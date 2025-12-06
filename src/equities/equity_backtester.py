@@ -60,6 +60,9 @@ class EquityBacktester:
         validate_oos: bool = False,
         adv_lookup: Any = 1_000_000.0,
         spread_lookup: Any = None,
+        benchmark_df: Optional[pd.DataFrame] = None,
+        benchmark_name: str = "SPY",
+        crisis_windows: Optional[List[Tuple[str, str]]] = None,
     ) -> Dict[str, float]:
         """
         Backtest a set of signals on price data.
@@ -120,6 +123,8 @@ class EquityBacktester:
         final_value = float(equity[-1])
         pnl = final_value - self.initial_cash
         total_return = pnl / self.initial_cash if self.initial_cash != 0 else 0.0
+        annualized_return = (1 + total_return) ** (252 / max(len(df), 1)) - 1
+        volatility = float(np.std(strat_ret) * np.sqrt(252))
 
         # Metrics
         strat_ret_series = pd.Series(strat_ret)
@@ -144,6 +149,8 @@ class EquityBacktester:
             "final_value": final_value,
             "pnl": pnl,
             "total_return": total_return,
+            "annualized_return": annualized_return,
+            "volatility": volatility,
             "sharpe": sharpe,
             "max_drawdown": max_dd,
             "win_rate": win_rate,
@@ -166,6 +173,55 @@ class EquityBacktester:
 
         if print_trades and len(trades) > 0:
             self._print_trade_report(trades, ticker)
+
+        # Benchmark overlay (e.g., SPY)
+        if benchmark_df is not None and not benchmark_df.empty and "Close" in benchmark_df.columns:
+            bench_df = benchmark_df.copy()
+            bench_df["bench_close"] = bench_df["Close"].astype(float)
+            merged = df[["Date", "strat_ret"]].merge(
+                bench_df[["Date", "bench_close"]], on="Date", how="inner"
+            )
+            bench_ret = merged["bench_close"].pct_change().fillna(0.0)
+            bench_total = float((1 + bench_ret).prod() - 1)
+            bench_annualized = float((1 + bench_total) ** (252 / max(len(bench_ret), 1)) - 1)
+            bench_vol = float(bench_ret.std() * np.sqrt(252))
+            corr = float(pd.Series(merged["strat_ret"]).corr(bench_ret))
+            var_bench = bench_ret.var()
+            beta = float(pd.Series(merged["strat_ret"]).cov(bench_ret) / var_bench) if var_bench != 0 else 0.0
+
+            metrics.update(
+                {
+                    "benchmark": benchmark_name,
+                    "benchmark_total_return": bench_total,
+                    "benchmark_annualized_return": bench_annualized,
+                    "benchmark_volatility": bench_vol,
+                    "excess_return": total_return - bench_total,
+                    "corr_with_benchmark": corr,
+                    "beta_to_benchmark": beta,
+                }
+            )
+
+        # Crisis replay windows
+        if crisis_windows:
+            crisis_results = []
+            df["Date_dt"] = pd.to_datetime(df["Date"])
+            for start, end in crisis_windows:
+                window_df = df[(df["Date_dt"] >= pd.to_datetime(start)) & (df["Date_dt"] <= pd.to_datetime(end))]
+                if window_df.empty:
+                    continue
+                window_ret = window_df["strat_ret"].fillna(0.0)
+                window_total = float((1 + window_ret).prod() - 1)
+                window_dd = float(self.signal_gen.calculate_max_drawdown(window_ret))
+                crisis_results.append(
+                    {
+                        "window": f"{start}->{end}",
+                        "total_return": window_total,
+                        "max_drawdown": window_dd,
+                        "days": len(window_df),
+                    }
+                )
+            if crisis_results:
+                metrics["crisis_windows"] = crisis_results
 
         return metrics
 
