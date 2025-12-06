@@ -22,6 +22,10 @@
 
 **Key rotation procedure:** store new keys in `.env` (local) and GitHub Actions secrets (CI). Rotate on cadence or on any leak/429 spike; validate with `python -m src.main --healthcheck` after rotation and log the change in release notes.
 
+**Provider priority (latency-first):**
+- Equities/intraday: Polygon → Finnhub → yfinance (fallback only).
+- Credit/OAS: FRED primary; price-based spread proxies from Polygon/FMP only if OAS unavailable.
+
 ## 2. Nightly Batch Schedule (UTC-5)
 
 | Time  | Job | Command |
@@ -30,7 +34,6 @@
 | 16:15 | Equity universe | `python -m src.main --watchlist configs/universes/core_equities.yaml --mode position --credit_overlay` |
 | 16:45 | Credit spreads | `python -m src.credit.credit_backtester --period 3y --use_percentile --lower_pct 10 --upper_pct 90` |
 | 17:05 | Volatility module | `python -m src.volatility.volatility_backtester --period 2y --term_structure contango` |
-| 17:20 | Portfolio aggregation | `python -m src.portfolio_manager --strategies equities credit volatility --target_vol 0.10` |
 | 17:35 | Reporting & export | `python scripts/export_reports.py --format csv,json,html` |
 
 Each job logs to `logs/signal_engine.log` (rolling 20 MB) with `INFO` baseline.
@@ -53,7 +56,7 @@ Each job logs to `logs/signal_engine.log` (rolling 20 MB) with `INFO` baseline.
 
 ## 3a. Data Pipeline Orchestrator (new)
 
-- Entry point: `python -m src.data_pipeline` runs the default nightly schedule (healthcheck → equities watchlist → credit OAS → volatility placeholder → portfolio aggregation).
+- Entry point: `python -m src.data_pipeline` runs the default nightly schedule (healthcheck → equities watchlist → credit OAS → volatility placeholder).
 - Flags:
   - `--force_refresh` propagates refresh to fetchers where supported.
   - `--steps name=cmd1,cmd2,...` overrides the schedule (comma-separated command tokens).
@@ -120,19 +123,26 @@ Before merging to `main` or cutting a release:
 | Repeated API 429 | Swap to cached data, contact provider to lift limits, consider reducing watchlist size. |
 | Missing credit OAS data | Verify FRED API key, fall back to price-based spread proxy with `--disable_oas`. |
 | Stale sentiment values | Recompute using local NLP fallback (`python scripts/offline_sentiment.py`). |
-| Portfolio volatility > target | Auto-scale notional via `portfolio_manager`, log override reason, rerun allocation. |
 
 ## 9. Healthchecks & Metrics (Scaffold)
 
 - Health probes: `python -m src.main --healthcheck`, `python -m src.credit.credit_backtester --healthcheck`, `python -m src.intraday --healthcheck`.
 - Metrics/heartbeat files: `logs/metrics/metrics_*.jsonl` when `METRICS_ENABLED=1` is set.
 - Alerts: written to `logs/alerts/alerts_*.jsonl`; optional webhook via `ALERT_WEBHOOK_URL`.
+- Prometheus text export (optional): set `METRICS_PROM_FILE=logs/metrics/metrics.prom` when constructing `MetricsCollector`.
+- Uptime/latency: `python scripts/health_probe.py --cmd "python -m src.main --healthcheck"` (repeat for other CLIs).
 
 ## 10. Backup / DR (Scaffold)
 
 - Ad-hoc snapshot: `bash scripts/backup.sh` (archives `logs`, `reports`, `data/raw`, `data/cache` into `backups/<timestamp>/`).
 - Verify backups: `ls backups/` and inspect latest tarballs.
 - On-call checklist: see `docs/dr_checklist.md` for step-by-step probes and incident logging.
+- DR tabletop: run `scripts/dr_tabletop.sh` monthly and record findings.
+
+## 11. On-Call & Alerts
+
+- Rotation template: `docs/oncall.md` (SEV levels, escalation, health probes, metrics locations, alert channels).
+- Alert hooks: `ALERT_WEBHOOK_URL` for notifier, logs in `logs/alerts/`.
 
 ## 11. Risk Management & Limits (New)
 

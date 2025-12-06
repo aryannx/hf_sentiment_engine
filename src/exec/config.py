@@ -30,4 +30,5 @@ class TCAConfig:
     impact: ImpactModel = field(default_factory=ImpactModel)
     strategy: ExecutionStrategyConfig = field(default_factory=ExecutionStrategyConfig)
     venues: VenueWeights = field(default_factory=VenueWeights)
+    venue_latency_ms: Dict[str, float] = field(default_factory=lambda: {"LIT": 5.0, "DARK": 15.0, "ALPACA": 10.0, "IBKR": 7.0})
 

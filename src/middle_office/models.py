@@ -13,6 +13,16 @@ class SettlementStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class BreakSeverity(str, Enum):
+    WARN = "warn"
+    BLOCK = "block"
+
+
+class BreakStatus(str, Enum):
+    OPEN = "open"
+    RESOLVED = "resolved"
+
+
 @dataclass
 class BookedTrade:
     trade_id: str
@@ -53,5 +63,25 @@ class BreakRecord:
     broker_value: float
     custodian_value: float
     materiality: float
+    severity: BreakSeverity = BreakSeverity.WARN
+    status: BreakStatus = BreakStatus.OPEN
     notes: Optional[str] = None
+    resolution: Optional[str] = None
+
+
+@dataclass
+class CorporateAction:
+    as_of: datetime
+    ticker: str
+    action_type: str  # DIVIDEND, SPLIT
+    amount: Optional[float] = None  # per-share dividend
+    ratio: Optional[float] = None   # split ratio (e.g., 2.0 = 2-for-1)
+
+
+@dataclass
+class CashMovement:
+    as_of: datetime
+    amount: float
+    currency: str = "USD"
+    source: str = "fund"
 

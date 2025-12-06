@@ -93,17 +93,11 @@ def build_default_steps(cache_root: Path, force_refresh: bool) -> List[Tuple[str
             ],
         ),
         (
-            "portfolio",
+            "dq_checks",
             [
                 sys.executable,
                 "-m",
-                "src.portfolio_manager",
-                "--strategies",
-                "equities",
-                "credit",
-                "volatility",
-                "--target_vol",
-                "0.10",
+                "src.data.dq_runner",
             ],
         ),
     ]

@@ -6,6 +6,7 @@
 - OMS/PMS/middle-office scaffolds and reporting scaffolds completed.
 - Data pipeline orchestrator (`src/data_pipeline.py`) and cache admin CLI (`scripts/cache_admin.py`) added; validators can emit alerts; key rotation guidance documented.
 - Release tagging workflow (`.github/workflows/release-tag.yml`) added; cache registry helper (`src/data/cache_registry.py`) for cache bookkeeping.
+- Release build workflow with artifacts (`.github/workflows/release-build.yml`) and smoke matrix dispatcher (`.github/workflows/smoke-matrix.yml`) for equity/credit/intraday healthchecks.
 
 ## 2025-12-05
 - Consolidated docs and trackers; multi-ticker equities aggregator validated; credit OAS caching and CLI polish; compliance hooks added.

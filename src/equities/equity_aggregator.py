@@ -62,6 +62,9 @@ class EquityAggregator:
         validate_oos: bool = False,
         adv_lookup: Any = 1_000_000.0,
         spread_lookup: Any = None,
+        benchmark: str = "SPY",
+        bond_benchmark: str = "IEF",
+        crisis_windows: Optional[List[Tuple[str, str]]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Run complete equity pipeline for single ticker.
@@ -73,6 +76,10 @@ class EquityAggregator:
             if price_data.empty:
                 print(f"⚠️ No price data for {ticker}")
                 return None
+
+            # 1b. Fetch benchmark(s)
+            benchmark_df = self.fetcher.fetch_stock_data(benchmark, period=period)
+            bond_df = self.fetcher.fetch_stock_data(bond_benchmark, period=period)
 
             # 2. Get sentiment series
             start = price_data["Date"].min().strftime("%Y-%m-%d")
@@ -115,6 +122,9 @@ class EquityAggregator:
                 validate_oos=validate_oos,
                 adv_lookup=adv_lookup,
                 spread_lookup=spread_lookup,
+                benchmark_df=benchmark_df if not benchmark_df.empty else None,
+                benchmark_name=benchmark,
+                crisis_windows=crisis_windows,
             )
 
             # 6. Add strategy report
@@ -137,9 +147,9 @@ class EquityAggregator:
                 "max_drawdown": float(strategy_report["max_drawdown"]),
                 "final_value": float(metrics["final_value"]),
                 "total_return": float(metrics["total_return"]),
-                "annualized_return": float(metrics["annualized_return"]),
-                "volatility": float(metrics["volatility"]),
-                "max_drawdown_pct": float(metrics["max_drawdown"]),
+                "annualized_return": float(metrics.get("annualized_return", 0.0)),
+                "volatility": float(metrics.get("volatility", 0.0)),
+                "max_drawdown_pct": float(metrics.get("max_drawdown", 0.0)),
                 "backtest_sharpe": float(metrics.get("sharpe", 0.0)),
                 "credit_overlay": use_credit_overlay and risk_multiplier is not None,
                 "mode": mode,
@@ -158,6 +168,34 @@ class EquityAggregator:
                     "oos_total_return": float(oos_metrics.get("total_return", 0)),
                     "oos_sharpe": float(oos_metrics.get("sharpe", 0)),
                 })
+
+            # Benchmark overlays
+            if metrics.get("benchmark_total_return") is not None:
+                result["benchmark"] = metrics.get("benchmark", benchmark)
+                result["benchmark_total_return"] = float(metrics.get("benchmark_total_return", 0.0))
+                result["benchmark_annualized_return"] = float(metrics.get("benchmark_annualized_return", 0.0))
+                result["excess_return"] = float(metrics.get("excess_return", 0.0))
+                result["corr_with_benchmark"] = float(metrics.get("corr_with_benchmark", 0.0))
+                result["beta_to_benchmark"] = float(metrics.get("beta_to_benchmark", 0.0))
+
+            # 60/40 overlay if bond data is available
+            if bond_df is not None and not bond_df.empty and benchmark_df is not None and not benchmark_df.empty:
+                merged = (
+                    price_data[["Date"]]
+                    .merge(benchmark_df[["Date", "Close"]].rename(columns={"Close": "bench"}), on="Date", how="inner")
+                    .merge(bond_df[["Date", "Close"]].rename(columns={"Close": "bond"}), on="Date", how="inner")
+                )
+                if not merged.empty:
+                    bench_ret = merged["bench"].pct_change().fillna(0.0)
+                    bond_ret = merged["bond"].pct_change().fillna(0.0)
+                    sixty_forty_ret = 0.6 * bench_ret + 0.4 * bond_ret
+                    sixty_total = float((1 + sixty_forty_ret).prod() - 1)
+                    sixty_ann = float((1 + sixty_total) ** (252 / max(len(sixty_forty_ret), 1)) - 1)
+                    result["sixty_forty_total_return"] = sixty_total
+                    result["sixty_forty_annualized_return"] = sixty_ann
+
+            if metrics.get("crisis_windows"):
+                result["crisis_windows"] = metrics["crisis_windows"]
 
             return result
 
@@ -181,6 +219,9 @@ class EquityAggregator:
         max_workers: int = 4,
         adv_lookup: Any = 1_000_000.0,
         spread_lookup: Any = None,
+        benchmark: str = "SPY",
+        bond_benchmark: str = "IEF",
+        crisis_windows: Optional[List[Tuple[str, str]]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Run equity pipeline on multiple tickers with parallel processing.
@@ -207,6 +248,9 @@ class EquityAggregator:
                     validate_oos,
                     adv_lookup,
                     spread_lookup,
+                    benchmark,
+                    bond_benchmark,
+                    crisis_windows,
                 ): ticker
                 for ticker in tickers
             }
@@ -325,10 +369,26 @@ class EquityAggregator:
         html_path = output_dir / f"equity_aggregator_{timestamp}.html"
         self._generate_html_report(successful, failed, html_path, include_heatmaps)
 
+        # Bundle summary (Markdown) for interview/demo
+        summary_path = output_dir / f"equity_aggregator_{timestamp}_summary.md"
+        self._generate_summary_markdown(successful, failed, summary_path, csv_path if successful else None, json_path, html_path)
+
+        # Optional zip bundle
+        try:
+            import shutil
+
+            base_name = output_dir / f"equity_aggregator_{timestamp}_bundle"
+            shutil.make_archive(str(base_name), "zip", root_dir=output_dir)
+            bundle_path = Path(str(base_name) + ".zip")
+        except Exception:
+            bundle_path = None
+
         return {
             "csv": csv_path if successful else None,
             "json": json_path,
             "html": html_path,
+            "summary": summary_path,
+            "bundle": bundle_path,
         }
 
     def _generate_html_report(
@@ -417,6 +477,54 @@ class EquityAggregator:
 
         with output_path.open("w", encoding="utf-8") as f:
             f.write(html)
+
+    def _generate_summary_markdown(
+        self,
+        successful: List[Dict],
+        failed: List[Dict],
+        output_path: Path,
+        csv_path: Optional[Path],
+        json_path: Path,
+        html_path: Path,
+    ) -> None:
+        """Produce a concise markdown summary for interview/demo packets."""
+        lines = [
+            "# Equity Aggregator – Summary",
+            "",
+            f"- Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"- Total tickers: {len(successful) + len(failed)}",
+            f"- Successful: {len(successful)}",
+            f"- Failed: {len(failed)}",
+        ]
+        if successful:
+            best = max(successful, key=lambda x: x.get("total_return", 0))
+            worst = min(successful, key=lambda x: x.get("total_return", 0))
+            lines.append(f"- Best return: {best['ticker']} ({best.get('total_return',0):.2%})")
+            lines.append(f"- Worst return: {worst['ticker']} ({worst.get('total_return',0):.2%})")
+            if best.get("benchmark_total_return") is not None:
+                lines.append(
+                    f"- Benchmark overlay ({best.get('benchmark','SPY')}): "
+                    f"strategy excess vs benchmark (best): {best.get('excess_return',0):.2%}"
+                )
+        if csv_path:
+            lines.append(f"- CSV: {csv_path.name}")
+        lines.append(f"- JSON: {json_path.name}")
+        lines.append(f"- HTML: {html_path.name}")
+
+        lines.append("")
+        lines.append("## Crisis Windows (if available)")
+        if successful and any(r.get("crisis_windows") for r in successful):
+            for r in successful:
+                if r.get("crisis_windows"):
+                    for c in r["crisis_windows"]:
+                        lines.append(
+                            f"- {r['ticker']} {c['window']}: "
+                            f"ret {c['total_return']:.2%}, maxDD {c['max_drawdown']:.2%}"
+                        )
+        else:
+            lines.append("- None recorded")
+
+        output_path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def get_top_tickers(n: int = 20) -> List[str]:

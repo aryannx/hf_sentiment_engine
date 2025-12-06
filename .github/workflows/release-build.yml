@@ -1,0 +1,58 @@
+name: Release Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag name (e.g., v0.1.0)"
+        required: true
+      title:
+        description: "Release title"
+        required: false
+      body:
+        description: "Release notes body"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Build wheel and sdist
+        run: python -m build
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.event.inputs.tag }}
+          path: dist/*
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ github.event.inputs.tag }}
+          path: dist
+      - name: Create Release with assets
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          name: ${{ github.event.inputs.title || github.event.inputs.tag }}
+          body: ${{ github.event.inputs.body || 'Automated release build' }}
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

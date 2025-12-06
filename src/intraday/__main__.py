@@ -10,6 +10,7 @@ from src.core.metrics import MetricsCollector
 from src.risk.config import default_risk_config
 from src.risk.engine import RiskEngine
 from src.risk.models import Position as RiskPosition
+from src.intraday.execution import AlpacaPaperExecutor, PaperOrder
 
 from .intraday_backtester import IntradayBacktester
 from .intraday_data_fetcher import IntradayDataFetcher
@@ -59,6 +60,23 @@ def main() -> None:
         help="Allow breakout logic during trending regimes",
     )
     parser.add_argument(
+        "--delta_filter",
+        action="store_true",
+        default=True,
+        help="Require neutral cumulative delta (z-score) when available",
+    )
+    parser.add_argument(
+        "--delta_z_max",
+        type=float,
+        default=0.75,
+        help="Maximum absolute delta z-score to allow a trade (default 0.75)",
+    )
+    parser.add_argument(
+        "--paper_route",
+        action="store_true",
+        help="Prototype: log Alpaca paper orders for generated signals",
+    )
+    parser.add_argument(
         "--output",
         help="Optional path to dump metrics JSON.",
     )
@@ -97,12 +115,15 @@ def main() -> None:
     confirmations = _parse_list(args.confirmations)
     supports = _parse_float_list(args.support_levels)
 
+    delta_z = data.get("CUM_DELTA_Z")
+
     signals = generator.generate_signal(
         data,
         style=args.style,
         confirmations=confirmations,
         support_levels=supports,
         allow_breakout=args.allow_breakout,
+        delta_z_series=delta_z if args.delta_filter else None,
     )
     backtester = IntradayBacktester()
     metrics = backtester.run_backtest(data, signals=signals)
@@ -110,6 +131,22 @@ def main() -> None:
     print(f"Ticker: {args.ticker}")
     print(f"Trades: {metrics['trade_count']}, Sharpe: {metrics['sharpe']:.2f}")
     print(f"Final equity: ${metrics['final_value']:,.0f}")
+
+    # Optional paper route logging
+    if args.paper_route and metrics["trades"]:
+        orders = []
+        for t in metrics["trades"]:
+            orders.append(
+                PaperOrder(
+                    ticker=args.ticker,
+                    side="BUY" if t["direction"] > 0 else "SELL",
+                    qty=1.0,
+                    px=t["entry_price"],
+                    timestamp=datetime.utcnow().isoformat(),
+                )
+            )
+        executor = AlpacaPaperExecutor.from_env()
+        executor.submit_orders(orders)
 
     if args.output:
         output_path = Path(args.output)
