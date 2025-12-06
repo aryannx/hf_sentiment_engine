@@ -13,14 +13,3 @@ def log_event(event: str, meta: Dict[str, Any], audit_dir: Path = Path("logs/rep
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(payload) + "\n")
 
-
-def log_approval(report_path: Path, approver: str, status: str = "approved", notes: str = "") -> None:
-    payload = {
-        "ts": datetime.utcnow().isoformat(),
-        "report": str(report_path),
-        "approver": approver,
-        "status": status,
-        "notes": notes,
-    }
-    log_event("report_approval", payload)
-

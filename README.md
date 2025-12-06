@@ -4,10 +4,11 @@ Multi-asset systematic research platform that mirrors an institutional hedge-fun
 
 ## Executive Summary
 
-- **Multi-asset coverage**: Equities, credit (HY/IG), volatility (VIX/ETNs), intraday/HFT-lite; real data only (Polygon/Finnhub/FMP/FRED/yfinance fallback, Alpaca-ready).
-- **Cost- and risk-aware backtesting**: Event + position modes, transaction costs, benchmark/crisis overlays, credit/VIX throttles, PMS/risk hooks.
-- **Execution/ops scaffolds**: OMS simulator with TCA hooks, middle-office booking/recon stubs, compliance checks, logging/metrics/healthchecks, cache registry.
-- **Docs & CI**: Runbook, release notes, project gaps tracker, research tracker; GitHub Actions for CI, release tagging/builds, and smoke matrix.
+- **Asset coverage** – Equities (single names & portfolios), credit (HY vs. IG spreads), volatility (VIX & ETNs), plus a new intraday/HFT-lite module for high-conviction mean-reversion scalps fed by institutional APIs (Finnhub, Polygon, Alpaca).
+- **Dual-mode backtesting** – Event-driven (+1/0/-1 bars) for fast sweeps and position-mode for true P&L with exits, transaction costs, and risk overlays.
+- **Alternative data integration** – Finnhub, Financial Modeling Prep, custom scrapers, and sentiment blending with VADER/TextBlob plus credit-specific lexicons.
+- **Risk-aware portfolio layer** – Dynamic position sizing off credit spreads & VIX, target-vol scaling, strategy correlations, and exportable analytics.
+- **Production-minded design** – Modular `src/` packages, CLI entry points, SQLite/pickle caching, logging hooks, CI-ready tests, and Streamlit dashboards.
 
 The detailed intent, differentiators, and interview narrative live in [`docs/hf_drive_doc.pdf`](docs/hf_drive_doc.pdf). This README distills the execution plan and links to runnable components.
 
@@ -51,7 +52,7 @@ The detailed intent, differentiators, and interview narrative live in [`docs/hf_
 | Core language       | Python 3.9+, `pandas`, `numpy`, `pydantic` (planned)                   |
 | Technical analysis  | `TA-Lib`, `pandas-ta`, in-house indicators                            |
 | Sentiment / NLP     | `nltk` (VADER), `textblob`, custom keyword filters                    |
-| Data sources        | Polygon (primary intraday/equity), Finnhub (secondary), FRED (credit), yfinance (fallback) |
+| Data sources        | Finnhub, Financial Modeling Prep, FRED, Polygon, Alpaca, yfinance (fallback) |
 | Backtesting         | Custom engines in `src/equities`, `src/credit`, `src/volatility`      |
 | Visualization       | `matplotlib`, `seaborn`, `plotly`, Streamlit dashboard (`app/`)       |
 | Storage             | SQLite/pickle caches (planned), CSV/JSON signal export                |
@@ -69,6 +70,7 @@ hf_sentiment_engine/
 │   ├── volatility/          # VIX + vol module (WIP)
 │   ├── intraday/            # Day-trader module (multi-provider data, signals, CLI)
 │   ├── core/                # Shared signal helpers, base classes
+│   ├── portfolio_manager.py # Multi-strategy allocator (WIP)
 │   └── utils/               # Metrics, validators, export hooks
 ├── tests/                   # pytest suites (placeholders to be expanded)
 ├── requirements.txt
@@ -115,7 +117,7 @@ Equity pipeline (single ticker, sentiment overlay, optional credit risk):
 python -m src.main --ticker AAPL --period 1y --mode position --credit_overlay
 ```
 
-Equity backtester variants (uses Polygon→Finnhub→yfinance priority):
+Equity backtester variants:
 ```bash
 python -m src.equities.equity_backtester \
   --ticker MSFT \
@@ -134,6 +136,14 @@ python -m src.credit.credit_backtester \
   --z_thr 1.0 \
   --use_percentile \
   --lower_pct 10 --upper_pct 90
+```
+
+Portfolio allocator (WIP, target-vol sizing placeholder):
+```bash
+python -m src.portfolio_manager \
+  --strategies equities credit volatility \
+  --target_vol 0.10 \
+  --risk_rules configs/portfolio.yaml
 ```
 
 Intraday mean-reversion runner (RSI/Stochastic/Bollinger stack):
@@ -208,11 +218,13 @@ All commands emit CSV/JSON/HTML reports in `reports/` (or custom `--output` dire
 - **Position recon:** `src/data/position_recon.py` compares fund positions to broker/custodian CSVs (leverages middle-office recon).
 - **Tests:** `tests/test_data_validators.py`, `tests/test_position_recon.py`.
 
+## Production Infra & Monitoring (Scaffold)
+
 - **Structured logs & healthchecks:** JSON logs helper in `src/core/logging_utils.py`; `--healthcheck` flags on equity/credit/intraday CLIs for probes.
 - **Metrics/heartbeat:** `src/core/metrics.py` writes counters/timers to `logs/metrics/` when `METRICS_ENABLED=1`.
 - **Alerts:** `src/core/notifier.py` logs alerts to `logs/alerts/` and optionally posts to `ALERT_WEBHOOK_URL`.
 - **Backups:** `scripts/backup.sh` snapshots `logs`, `reports`, and `data` to `backups/<timestamp>/`.
-- **Runbook:** Operational details live in `docs/RUNBOOK.md`; DR/checklist content consolidated there.
+- **DR checklist:** `docs/dr_checklist.md`; operational details live in `docs/RUNBOOK.md`.
 
 ## Risk Management & Limits (New)
 
@@ -257,10 +269,20 @@ pytest -q
 - 🚧 Current focus: documentation, multi-ticker equity runner, credit OAS filter, volatility module MVP, portfolio allocator, Streamlit dashboards, CI & tests
 - 🔜 Medium term: Monte Carlo envelopes, benchmark dashboards, AI research copilot (chatbot over local notebooks/logs), Bloomberg-style terminal adapter + execution bridges (IBKR/Bloomberg), asset-class expansion into options/derivatives, fixed income, and commodities
 
-## Intraday Strategy (Quick talking points)
+## Intraday Strategy Narrative (Interview Cheat Sheet)
 
-- **Goal:** HFT-lite mean-reversion watcher on 1h/5m bars; fires only on extreme RSI/Bollinger/Stoch alignments (rare/frequent/Crawford styles).
-- **Data:** Polygon/Finnhub (yfinance fallback), Alpaca-ready logging; indicators engineered uniformly per provider.
-- **Risk/discipline:** Transaction costs, max-hold windows, delta/volume gating; logs every candidate for auditability.
-- **Scale path:** Add FX coverage, breakout mode, live VWAP/venue routing, and AI copilot queries over logged events.
+When explaining the intraday/HFT-lite module to funds or interviewers:
+
+- **Why it exists** – “I wanted a scalper strategy that never sleeps. It watches 1h/5m bars and only fires when price, RSI, and stochastic all scream ‘mean reversion’—exactly the kind of rare setup humans often miss.”
+- **Signal recipe** – RSI ≤16 (or ≥84) + price ≥2.5σ beyond Bollinger bands + slow stochastic cross. Optional confirmations for volume spikes, RSI divergence, or proximity to predefined support/resistance. Built-in regime detection so it only trades sideways markets unless a breakout flag is set.
+- **Data quality** – Pulls bars from Finnhub and Polygon (with yfinance fallback), meaning it can easily pivot to brokerage-grade data (Alpaca/IBKR) for execution. Indicators are engineered uniformly regardless of provider.
+- **Risk framing** – Scarce setups ⇒ low trade count but high win rate. Backtests enforce transaction costs, max-hold windows, and log every candidate event (even the ones filtered out) so PMs can audit scarcity vs discipline.
+- **Scalability** – The module already supports equities/futures/FX. Next steps include cumulative delta gating, options/fixed-income/commodities overlays, and an AI research copilot that can answer “show me every RSI≤12 signal in 2025 and how volume behaved.”
+- **Demo commands** – Showcase with:  
+  ```bash
+  python -m src.intraday --ticker ES=F --period 180d --interval 1h --provider polygon --style rare --confirmations volume,divergence --support_levels 4800,4750
+  ```
+  Mention that results export to JSON/CSV and can feed dashboards or execution adapters.
+
+Use this story to demonstrate short-horizon expertise, disciplined signal design, and a roadmap toward professional-grade execution and AI-assisted research.
 

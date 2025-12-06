@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict
 
-from src.middle_office.models import PositionSnapshot, CorporateAction, CashMovement
+from src.middle_office.models import PositionSnapshot
 
 
 @dataclass
@@ -23,17 +23,4 @@ class IBOR:
             positions=dict(self.positions),
             cash=self.cash,
         )
-
-    def apply_corporate_action(self, action: CorporateAction) -> None:
-        """Adjust positions/cash for splits and dividends."""
-        qty = self.positions.get(action.ticker, 0.0)
-        if qty == 0:
-            return
-        if action.action_type.upper() == "DIVIDEND" and action.amount is not None:
-            self.cash += qty * action.amount
-        elif action.action_type.upper() == "SPLIT" and action.ratio is not None:
-            self.positions[action.ticker] = qty * action.ratio
-
-    def apply_cash_movement(self, movement: CashMovement) -> None:
-        self.cash += movement.amount
 

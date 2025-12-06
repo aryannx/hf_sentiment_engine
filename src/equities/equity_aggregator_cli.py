@@ -96,22 +96,6 @@ def main():
         help="Output directory for results"
     )
     parser.add_argument(
-        "--benchmark",
-        default="SPY",
-        help="Benchmark ticker for overlay metrics (default: SPY)"
-    )
-    parser.add_argument(
-        "--bond-benchmark",
-        default="IEF",
-        help="Bond benchmark for 60/40 overlay (default: IEF)"
-    )
-    parser.add_argument(
-        "--crisis",
-        nargs="*",
-        default=["2008-09-01:2009-06-30", "2020-02-15:2020-04-30"],
-        help="Crisis windows start:end (YYYY-MM-DD:YYYY-MM-DD). Default GFC & COVID."
-    )
-    parser.add_argument(
         "--no-heatmaps",
         action="store_true",
         help="Skip heatmap generation in HTML report"
@@ -230,9 +214,6 @@ def main():
         max_workers=args.max_workers,
         adv_lookup=adv_lookup,
         spread_lookup=spread_lookup,
-        benchmark=args.benchmark,
-        bond_benchmark=args.bond_benchmark,
-        crisis_windows=[tuple(w.split(":")) for w in args.crisis] if args.crisis else None,
     )
 
     # Generate reports

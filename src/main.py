@@ -32,7 +32,6 @@ from core.compliance_rules import default_compliance_config
 from core.oms_models import Order, OrderSide
 from core.oms_simulator import ExecutionSimulator
 from core.oms_config import ExecutionConfig
-from core.oms_bridges import AlpacaPaperBridge, FixBridgeStub
 from core.position_ledger import PositionLedger
 from pms.config import demo_pms_config
 from pms.rebalancer import Rebalancer
@@ -117,8 +116,6 @@ def run_equity_pipeline(
     pms_rebalance: bool = False,
     adv_provider: str = "static",
     spread_provider: str = "static",
-    benchmark: str = "SPY",
-    crisis_windows: Optional[List[str]] = None,
 ):
     """
     End-to-end equity sentiment + signal + backtest pipeline.
@@ -171,9 +168,6 @@ def run_equity_pipeline(
     if price_data.empty:
         print("❌ No price data")
         return None
-    # Fetch benchmark for overlays
-    benchmark_df = fetcher.fetch_stock_data(benchmark, period=period)
-
 
     print(f"✅ {len(price_data)} rows of OHLCV + indicators")
 
@@ -316,9 +310,6 @@ def run_equity_pipeline(
             cost_bps=cost_bps,
             split_ratio=split_ratio,
             validate_oos=validate_oos,
-            benchmark_df=benchmark_df if not benchmark_df.empty else None,
-            benchmark_name=benchmark,
-            crisis_windows=[tuple(w.split(":")) for w in crisis_windows] if crisis_windows else None,
         )
 
     # Optional PMS rebalance proposal (demo config, single-account)
@@ -330,13 +321,7 @@ def run_equity_pipeline(
         print("\n📑 PMS Rebalance Proposal")
         print(f"Portfolio: {proposal.portfolio}, turnover={proposal.turnover:.2%}")
         for o in proposal.orders:
-            print(f"  {o.side} {o.qty:.2f} {o.ticker} @ {o.px:.2f} (acct={o.account})")
-
-        # Optionally route through OMS simulator to mimic execution
-        if simulate_execution and proposal.orders:
-            exec_sim = ExecutionSimulator(ExecutionConfig(route_venues=True))
-            fills = rebalancer.execute_orders(proposal.orders, exec_sim)
-            print(f"  OMS fills: {len(fills)} (logged to OMS audits)")
+            print(f"  {o.side} {o.qty:.2f} {o.ticker} @ {o.px:.2f}")
 
     # 5b) Post-trade compliance scaffold (current portfolio notionally at final value)
     posttrade = compliance_engine.post_trade_check(
@@ -451,17 +436,6 @@ if __name__ == "__main__":
         default="static",
         help="Spread source for execution simulation (simulate_execution mode).",
     )
-    parser.add_argument(
-        "--benchmark",
-        default="SPY",
-        help="Benchmark ticker for overlay metrics (default: SPY).",
-    )
-    parser.add_argument(
-        "--crisis",
-        nargs="*",
-        default=["2008-09-01:2009-06-30", "2020-02-15:2020-04-30"],
-        help="Crisis windows start:end (YYYY-MM-DD:YYYY-MM-DD). Default GFC & COVID.",
-    )
     args = parser.parse_args()
 
     if args.healthcheck:
@@ -499,8 +473,6 @@ if __name__ == "__main__":
                 validate_oos=args.validate_oos,
                 adv_provider=args.adv_provider,
                 spread_provider=args.spread_provider,
-                benchmark=args.benchmark,
-                crisis_windows=args.crisis,
             )
         except Exception as exc:  # pragma: no cover - defensive logging
             print(f"❌ Pipeline failed for {symbol}: {exc}")

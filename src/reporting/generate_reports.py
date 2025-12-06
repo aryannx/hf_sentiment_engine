@@ -9,7 +9,6 @@ import pandas as pd
 from src.reporting.holdings import holdings_snapshot, top_holdings
 from src.reporting.performance import performance_summary
 from src.reporting.audit import log_event
-from src.pms.attribution import benchmark_excess, contribution_report
 
 
 def render_template(path: Path, context: dict) -> str:
@@ -66,25 +65,6 @@ def main():
         "monthly_returns": {},
     }
 
-    # Stress / crisis placeholders
-    stress_pnl = 0.0
-    crisis_note = "Not run"
-    if not positions or not prices:
-        stress_pnl = 0.0
-    else:
-        stress_pnl = sum(qty * prices.get(tkr, 0.0) * -0.1 for tkr, qty in positions.items())
-        crisis_note = "Crisis replays not implemented; manual insert"
-
-    # Attribution placeholder
-    attribution = "Not available"
-    if positions and prices and perf["total_return"] != 0:
-        weights = {}
-        total_mv = sum(qty * prices.get(t, 0.0) for t, qty in positions.items())
-        if total_mv > 0:
-            weights = {t: (qty * prices.get(t, 0.0)) / total_mv for t, qty in positions.items()}
-            contrib = contribution_report(perf["monthly_returns"], weights) if perf.get("monthly_returns") else {}
-            attribution = str(contrib) if contrib else "Not available"
-
     # Render templates
     templates_dir = Path("docs/templates")
     inv_tpl = templates_dir / "investor_letter.md"
@@ -99,10 +79,6 @@ def main():
         "max_drawdown": f"{perf['max_drawdown']:.2%}",
         "holdings_table": holdings_df.to_markdown(index=False) if not holdings_df.empty else "No holdings",
         "top_holdings_table": top_table,
-        "stress_pnl": f"{stress_pnl:,.0f}",
-        "crisis_note": crisis_note,
-        "attribution": attribution,
-        "correlation_flags": "Not evaluated",
     }
 
     inv_content = render_template(

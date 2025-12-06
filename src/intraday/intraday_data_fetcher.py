@@ -122,15 +122,6 @@ class IntradayDataFetcher:
             "sideways",
             "trending",
         )
-
-        # Cumulative delta proxy: price change * volume, with z-score gate
-        price_change = df["Close"].diff().fillna(0.0)
-        df["CUM_DELTA_RAW"] = (price_change * df["Volume"]).fillna(0.0)
-        window = 50
-        mean = df["CUM_DELTA_RAW"].rolling(window, min_periods=10).mean()
-        std = df["CUM_DELTA_RAW"].rolling(window, min_periods=10).std().replace(0, np.nan)
-        df["CUM_DELTA_Z"] = (df["CUM_DELTA_RAW"] - mean) / std
-
         return df.ffill()
 
     def _fetch_from_yfinance(self, ticker: str, period: str, interval: str) -> pd.DataFrame:

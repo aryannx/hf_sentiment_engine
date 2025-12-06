@@ -9,14 +9,9 @@ portfolio: "{{portfolio_name}}"
 - Sharpe: {{sharpe}}
 - Sortino: {{sortino}}
 - Max Drawdown: {{max_drawdown}}
-- Stress PnL (10% shock): {{stress_pnl}}
-- Crisis Replay: {{crisis_note}}
 
 ## Top Holdings
 {{top_holdings_table}}
-
-## Attribution (if available)
-{{attribution}}
 
 ## Commentary
 {{commentary}}

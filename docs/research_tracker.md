@@ -1,60 +1,199 @@
-# Research Tracker (Deliverables-Only)
+# Modular Quant Platform – Master Tracker & Roadmap
 
-Date: Dec 6, 2025  
-Scope: Concise status of what exists, what’s next, and where to focus. This replaces verbose status docs.
-
----
-
-## Delivered (working today)
-- **Equities**: Dual-mode mean reversion + sentiment, credit/VIX overlays, transaction costs, benchmark/crisis hooks in backtester; multi-ticker aggregator with CSV/JSON/HTML + markdown/zip outputs; tests for signals, backtester, aggregator, cumulative delta gating.
-- **Credit**: HY/IG spread engine with FRED OAS percentile filter, IG/HY legs configurable, sentiment sizing, CLI backtester.
-- **Intraday/HFT-lite**: Polygon/Finnhub providers (yfinance fallback), RSI/Bollinger/Stoch styles (rare/frequent/Crawford), cumulative delta gating, Alpaca paper log toggle, execution logger, CLI/backtester tests.
-- **Volatility**: VIX spot/futures fetcher, term-structure metrics, basic signal generator, backtester skeleton; tests for signals/backtester.
-- **OMS/MO/PMS**: Orders/fills/routing models, execution simulator with slippage/partials/TCA hooks, position ledger; middle-office booking/recon/IBOR stubs; PMS targets/drift/turnover/attribution/risk stubs; rebalance demo flag.
-- **Risk**: Limit config/engine, scenarios/VAR helpers, margin stub, crisis windows; pre-flight risk hooks on runners.
-- **Data Quality**: Lineage logging, staleness/schema/anomaly/NaN/spike validators, cross-source price checks, position recon vs broker CSVs; cache registry scaffold.
-- **Reporting & Compliance**: 13F-like holdings/performance helpers, investor/reg templates, audit logger, CLI report generator; compliance pre/post-trade scaffold.
-- **Ops/CI**: Structured logging/healthcheck/metrics/notifier/backups stubs, runbook, release notes, GitHub CI + release/tag/build + smoke-matrix workflows.
+**Date:** December 3, 2025 (Updated: December 3, 2025)  
+**Owner:** Aryan Nambiar  
+**Purpose:** Exhaustive tracker for everything we have built or promised across equities, credit, volatility, intraday, portfolio, AI copilot, execution, and documentation. This replaces all previous status docs.
 
 ---
 
-## In Flight / Next 2 Weeks
-1) Intraday: tighten cumulative delta & volume gates; extend symbol map (FX/Alpaca).  
-2) Volatility: finish VIX curve ingestion + contango/backwardation signals; wire to portfolio.  
-3) AI Research Copilot: embeddings + vector store + minimal RAG CLI with audited tool runners (backtest/report fetch).  
-4) Data pipeline: orchestrator + cache admin + DQ alert wiring.  
-5) Portfolio/risk: target-vol + correlation dashboard; margin/liquidity hooks.  
-6) Execution quality: live VWAP from intraday bars, venue routing weights, broker attribution rollups.
+## 0. Recent Progress (Last Session)
+
+✅ **Completed:**
+- Project rebranded from "HF Sentiment Engine" → "Modular Quant Platform" across all documentation
+- Equities module fully tested: **9/9 tests passing** (`test_equity_backtester`, `test_equity_data_fetcher`, `test_equity_sentiment_analyzer`, `test_equity_signals`)
+- Fixed signal generator test expectations to match actual event/position mode behavior
+- All documentation updates committed and pushed to GitHub (`main` branch)
+- Consolidated status reports into single `research_tracker.md`
+- CI workflow added (pytest on push/PR); release notes file created
+- OMS/Middle Office scaffolds: orders/fills simulator, booking/recon/IBOR stubs, compliance hooks
+- PMS scaffold: targets, drift/turnover caps, cash buffer, attribution/risk stubs, demo rebalance hook
+- Data Quality scaffold: lineage logging, validators, cross-source check, position recon vs broker CSVs
+- Reporting scaffold: 13F-like holdings/perf helpers, investor/reg templates, audit logs, CLI generator
+
+🎯 **Next Immediate Steps:**
+1. Intraday delta/volume gating + FX/Alpaca symbols
+2. AI copilot MVP (embeddings + retrieval + CLI)
+3. Volatility MVP (VIX parser/strategy) and portfolio covariance/target-vol engine
+4. Data pipeline scheduler + alerts for data quality
 
 ---
 
-## Open Gaps (keep lean)
-- **Volatility depth**: Futures parser, signal validation, crisis/MC stress.  
-- **Execution**: FIX/IBKR bridge design, Alpaca paper routing polish, venue selection, impact model.  
-- **Data quality**: Alert sinks/dashboards, broader cross-source coverage, scheduled DQ runs.  
-- **AI copilot**: RAG service + CLI/Slack interface, audited tool execution.  
-- **Portfolio**: Multi-portfolio configs, OMS handoff of rebalance orders, correlation/target-vol live.  
-- **Ops/DR**: Uptime/latency probes, on-call rota, DR drill script.
+## 1. Executive Overview
+
+| Pillar | Status | What Exists | What’s Coming |
+| --- | --- | --- | --- |
+| **Data & Infra** | ✅ | Finnhub/FMP/FRED/Polygon/yfinance ingestion, caching plan, runbook, README | Unified `data_pipeline`, cache registry, structured logging, release notes |
+| **Equities** | ✅ | Dual-mode mean reversion + sentiment, credit/VIX overlays, watchlist CLI, cost-aware backtester | Multi-ticker aggregation, automated OOS metrics, benchmark overlays, crisis stress tests |
+| **Credit** | 🟡 | HY–IG spread engine with OAS percentile gates & sentiment sizing | Import cleanup, FRED cache, trend/momentum variant, CLI polish |
+| **Volatility** | 🟠 | Scaffolding in `src/volatility/` | VIX futures parser, contango/backwardation signals, Monte Carlo + stress testing |
+| **Intraday / HFT-lite** | ✅ | Finnhub/Polygon data adapters, RSI/Bollinger/Stoch signal styles, CLI, backtester, pytest coverage | Cumulative delta/volume gating, FX + Alpaca support, breakout mode experiments |
+| **Portfolio & Risk** | 🟡 | Kelly-style stub, aggregator placeholder | Covariance-aware target-vol scaling, correlation dashboards, strategy gating |
+| **AI Research Copilot** | 🟠 | Requirements drafted (retrieval + LLM) | Embedding pipeline, vector DB, CLI/Slack hooks, tool execution |
+| **Execution & Ops** | 🟠 | Runbook, README, remote reset, tests ready | GitHub Actions relaunch, Alpaca paper adapter, IBKR/Bloomberg bridge |
 
 ---
 
-## Quick Reference (where to look)
-- Equities: `src/equities/*`, `src/main.py`, `src/equities/equity_aggregator.py`, `tests/test_equity_*`, `tests/test_intraday_delta.py`.
-- Credit: `src/credit/credit_backtester.py`.
-- Intraday: `src/intraday/*`, `tests/test_intraday_delta.py`.
-- Volatility: `src/volatility/*`, `tests/test_volatility_*`.
-- Execution/TCA: `src/exec/*`, `src/core/oms_*`, `src/core/position_ledger.py`.
-- PMS/Risk: `src/pms/*`, `src/risk/*`.
-- Data Quality: `src/data/*`, `scripts/cache_admin.py` (if present), `logs/cache_registry/`.
-- Reporting/Compliance: `src/reporting/*`, `src/core/compliance_*`.
-- Ops/CI: `.github/workflows/*.yml`, `docs/release_notes.md`, `docs/RUNBOOK.md`.
+## 2. Data & Tooling Backbone
+- **APIs:** Finnhub (prices/news/sentiment), FMP (news/fundamentals), FRED (macro/OAS), Polygon (intraday), Alpaca (planned execution), yfinance (fallback), EODHD (aux sentiment).
+- **Environment:** `.venv` (Py3.11) with pinned requirements; `setup_nlp.py` for VADER/TextBlob downloads.
+- **Ops artifacts:** Runbook, README, nightly schedule, caching policy, logging guidance.
+- **Planned infra upgrades:** central `src/data_pipeline.py`, cache registry + admin script, structured JSON logging, Slack/email alerts, release notes file.
 
 ---
 
-## Demo Commands (fast)
-- Single equity: `python -m src.main --ticker AAPL --period 1y --mode position --credit_overlay --benchmark SPY --crisis_windows 2008_financial_crisis`
-- Equity aggregator: `python src/equities/equity_aggregator_cli.py --top 10 --bundle_reports`
-- Credit: `python -m src.credit.credit_backtester --period 1y --sent_thr 0.02 --z_window 30 --z_thr 0.5`
-- Intraday (Crawford): `python -m src.intraday --ticker SPY --period 180d --interval 1h --provider polygon --style crawford --alpaca_paper_trade`
-- Volatility smoke: `pytest tests/test_volatility_* -q`
+## 3. Module Deep Dive
+
+### 3.1 Equities (Mean Reversion + Sentiment)
+- **Pipeline:** Fetch OHLCV → blend sentiment (Finnhub/FMP/EODHD) → generate event/position signals → apply credit/VIX risk overlays → backtest with transaction costs.
+- **CLI:** `python -m src.main` with watchlists, multi-ticker runs, CSV/JSON exports, transaction cost + split flags.
+- **Aggregator:** `python src/equities/equity_aggregator_cli.py --top 20` - Batch analysis with parallel processing, comprehensive reports (CSV/JSON/HTML), and portfolio heatmaps.
+- **Tests:** ✅ **All 9 tests passing** (equity module) + **7 aggregator tests passing** — Complete coverage of fetchers, sentiment analyzer, signal generator (event & position modes), backtester math, OOS splits, transaction costs, and multi-ticker aggregation.
+- **Backlog:** Automatic benchmark overlay (SPY/60-40), crisis replay scripts, standardized report outputs.
+
+### 3.2 Credit (HY vs IG)
+- **Features:** Aligns LQD/HYG, fetches HY OAS from FRED, trades by percentile regimes, sentiment sizing hooks.
+- **To-Do:** Clean imports, cache OAS data, expose CLI percentile knobs, add trend-following ratio strategy, expand pytest coverage.
+
+### 3.3 Volatility
+- **Current:** Structural files only.
+- **Future:** VIX futures parser → contango/backwardation metrics, simple long/short vol strategy, integration with portfolio manager, Monte Carlo + crisis tests.
+
+### 3.4 Intraday / Day-Trader Module
+- **Goal:** “Algo that never sleeps” – monitors 1h/5m bars for RSI/Bollinger/Stoch extremes across equities/futures/FX.
+- **Providers:** Finnhub/Polygon (API keys) with yfinance fallback; planned Alpaca execution.
+- **Signal styles:** `rare` (RSI ≤16/≥84, ≥2.5σ, slow stochastic) vs `frequent` (RSI ≤20/≥80, ≥1.2σ, fast stochastic) with optional confirmations (volume spike, RSI divergence, support proximity) and regime filters.
+- **Backtesting:** Entry on signal close, exit at Bollinger midline/max hold, transaction-cost deductions, trade metadata logged.
+- **Tests:** `pytest tests/test_intraday_signals.py`.
+- **Next:** Add cumulative delta + volume gating, extend CLI to FX symbols, feed logs to AI copilot, implement breakout mode, hook into Alpaca/IBKR.
+
+### 3.5 Portfolio & Risk / PMS
+- **Current:** PMS scaffold with targets, drift/turnover caps, cash buffer, simple attribution and risk stubs (`src/pms/*`), demo rebalance hook in `src/main.py` (`pms_rebalance=True`).
+- **Next:** Multi-portfolio configs, account-level allocation, richer margin models, OMS execution of rebalance orders.
+
+### 3.6 AI Research Copilot
+- **Vision:** Repo-wide assistant answering “Why did ES trade?” or “Summarize last night’s credit OAS run.”
+- **Implementation plan:** Embedding pipeline + vector DB → retrieval-augmented LLM service (OpenAI/Anthropic), CLI/Slack interfaces, and safe tool execution (rerun backtests, fetch logs) with audit.
+
+### 3.7 Execution Bridges & OMS/Middle Office
+- **Current:** OMS scaffold (orders/routes/fills, simulated execution, TCA hooks, position ledger), middle-office booking/recon/IBOR stubs; compliance pre/post-trade checks.
+- **Next:** Alpaca paper adapter, IBKR/Bloomberg bridges, richer TCA; broker/custodian feeds into recon and booking.
+
+### 3.8 Data Quality & Reconciliation
+- **Current:** Lineage logging, staleness/schema/anomaly validators, optional cross-source price checks, position recon vs broker CSVs.
+- **Next:** Data pipeline scheduler, dashboards/alerts, cross-source expansion.
+
+### 3.9 Regulatory & Investor Reporting
+- **Current:** Offline reporting scaffold (13F-like holdings, perf summaries, investor letter/reg summary templates, audit logs, CLI generator).
+- **Next:** Flesh out templates, add stress/attribution inserts, binder packaging.
+
+---
+
+## 4. Risk Management & Limits Framework
+
+- **Hedge-fund grade expectations:** Multi-layer limits (strategy/portfolio/firm), real-time exposure/VAR/stress, correlation and concentration controls, margin and liquidity waterfalls, and live monitoring with alerts.
+- **Current state:** Basic transaction-cost modeling and a VIX-based throttle; no formal limit configs, no live exposure/VAR/stress, no margin/liquidity checks, and no real-time risk monitoring.
+- **Why it matters:** Prevents blowups and forced liquidations (LTCM, Archegos); protects PnL during tail events and correlation spikes; makes the platform interview-ready for institutional workflows.
+- **Next steps:** Add limit configs per layer, exposure calculators (gross/net/beta), scenario/VAR approximations, margin/liquidity stubs, and monitoring hooks tied to logging/metrics/notifier.
+
+---
+
+## 5. Roadmap
+
+### Immediate (1–2 Weeks)
+1. Re-enable GitHub CI (PAT/SSH) + lint/test workflow.  
+2. Intraday delta/volume gating + FX/Alpaca symbols.  
+3. AI copilot skeleton (embeddings + retrieval).  
+4. Data pipeline scaffolding + cache admin script + data-quality alerts.  
+
+### Near-Term (1–2 Months)
+1. Volatility MVP (VIX parser + strategy).  
+2. Portfolio target-vol scaling + correlation dashboard (extend PMS).  
+3. Benchmark + Monte Carlo tooling.  
+4. Alpaca paper execution prototype + OMS routing.  
+5. AI copilot beta (CLI + Slack bot with citations).
+
+### Medium-Term (Quarter)
+1. Asset-class expansion (options/derivatives, fixed income, commodities).  
+2. Intraday breakout-mode validation.  
+3. Execution bridges (IBKR/Bloomberg).  
+4. Automated nightly scheduler + alerting.  
+5. AI copilot tool execution.
+
+---
+
+## 6. Task Matrix
+
+| Area | Task | Status |
+| --- | --- | --- |
+| Documentation | Project rebranding & tracker consolidation | ✅ Complete |
+| Equities | Test suite (all 9 tests passing) | ✅ Complete |
+| Equities | Multi-ticker aggregator & heatmap | ✅ Complete |
+| Equities | Benchmark overlay & crisis scripts | Planned |
+| Credit | CLI cleanup + FRED cache (done); trend variant pending | 🟡 Partial |
+| Volatility | VIX parser + contango strategy | Planned |
+| Intraday | Delta/volume gating, FX support, breakout mode | Planned |
+| Portfolio | Covariance + target-vol engine | Planned |
+| Risk | Multi-layer limits, VAR/stress shocks, margin/liquidity stubs | Planned |
+| AI Copilot | Embedding + retrieval service | Planned |
+| Execution | Alpaca paper adapter, IBKR/Bloomberg bridge | Planned |
+| OMS | Order/route/fill scaffold + simulated execution | ✅ Complete |
+| PMS | Rebalance/attribution/risk scaffold | ✅ Complete |
+| Reporting | Regulatory-style extracts + investor letters scaffold | ✅ Complete |
+| Data Quality | Lineage + validators + recon scaffold | ✅ Complete |
+| Compliance | Pre-trade checks + audit logging scaffold | ✅ Complete |
+| Ops | Re-enable CI, add release notes | ✅ Complete |
+| Ops | Production monitoring scaffold (logging, healthchecks, metrics, alerts, backups) | ✅ Complete |
+
+---
+
+## 7. Interview & Demo Talking Points
+- Intraday rarity narrative (“algo never sleeps”) with demo command.  
+- Cross-asset overlays (credit/VIX) throttling equities.  
+- Ops discipline (runbook, caching, logging, pytest).  
+- AI copilot vision (repo-wide retrieval + actions).  
+- Execution roadmap (Alpaca now, IBKR/Bloomberg next).
+
+---
+
+## 8. Action Items
+
+### Tier 1 – Immediate (This Week)
+| Owner | Action | Status |
+| --- | --- | --- |
+| Aryan | ✅ Project rebrand & documentation consolidation | Complete |
+| Aryan | ✅ Equities module test suite verification | Complete |
+| Aryan | ✅ Multi-ticker equity aggregator + reporting (validated) | Complete |
+| Aryan | ✅ Credit OAS CLI polish + FRED cache | Complete |
+| Aryan | ✅ Re-enable GitHub CI (PAT/SSH setup) | Complete |
+| Aryan | ✅ Add compliance pre/post-trade scaffold + audit logs | Complete |
+| Aryan | ✅ Add structured logging, healthchecks, metrics/alerts, backups scaffold | Complete |
+
+### Tier 2 – Near-Term (1–2 Weeks)
+| Owner | Action | Target |
+| --- | --- | --- |
+| Aryan | Intraday delta/volume gating + FX support | Mid Dec |
+| Aryan | Risk limits framework (strategy/portfolio/firm layers) | Mid Dec |
+| Aryan | Build AI copilot MVP (embeddings + retrieval) | Mid Dec |
+| TBD | VIX parser & strategy | Late Dec |
+| TBD | Portfolio target-vol engine | Late Dec |
+
+### Tier 3 – Medium-Term (1–2 Months)
+| Owner | Action | Target |
+| --- | --- | --- |
+| TBD | Alpaca paper execution adapter | Early Jan |
+| TBD | Execution bridges (IBKR/Bloomberg) | Q1 2026 |
+
+---
+
+**Current Status:** ✅ Platform MVP (equities + credit skeleton + intraday) is functional and documented, now with production-ops scaffolds (healthchecks, metrics/alerts, backups). Focus: delta filters, multi-asset expansion (vol/options/fixed income/commodities), AI copilot service, and professional execution bridges so the Modular Quant Platform mirrors real hedge-fund workflows end-to-end.
 
