@@ -61,6 +61,9 @@ class CreditBacktester:
         use_percentile_filter: bool = True,
         lower_percentile: float = 10.0,
         upper_percentile: float = 90.0,
+        strategy: str = "spread_zscore",
+        momentum_window: int = 60,
+        momentum_threshold: float = 0.0,
         use_oas_cache: bool = True,
         cache_path: Optional[str] = None,
         ig_oas_series_id: str = "BAMLC0A0CM",
@@ -68,6 +71,10 @@ class CreditBacktester:
         simulate_execution: bool = False,
         adv_provider: str = "static",
         spread_provider: str = "static",
+        cache_ttl_days: int = 1,
+        strategy: str = "spread_zscore",
+        momentum_window: int = 60,
+        momentum_threshold: float = 0.0,
     ) -> Dict[str, float]:
         """
         End-to-end credit backtest for IG vs HY pair.
@@ -97,6 +104,7 @@ class CreditBacktester:
             cache_path=cache_path,
             ig_oas_series_id=ig_oas_series_id,
             hy_oas_series_id=hy_oas_series_id,
+            cache_ttl_days=cache_ttl_days,
         )
         etfs = fetcher.fetch_ig_hy_pair(period=period, interval="1d")
         ig_df = etfs.get(ig_ticker)
@@ -149,6 +157,9 @@ class CreditBacktester:
             use_percentile_filter=use_percentile_filter,
             lower_percentile=lower_percentile,
             upper_percentile=upper_percentile,
+            strategy=strategy,
+            momentum_window=momentum_window,
+            momentum_threshold=momentum_threshold,
         )
 
         if simulate_execution:
@@ -295,7 +306,7 @@ class CreditBacktester:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Test IG vs HY credit backtester")
+    parser = argparse.ArgumentParser(description="IG vs HY credit backtester")
     parser.add_argument(
         "--healthcheck",
         action="store_true",
@@ -308,10 +319,19 @@ if __name__ == "__main__":
     parser.add_argument("--use_percentile", action="store_true")
     parser.add_argument("--lower_pct", type=float, default=10.0)
     parser.add_argument("--upper_pct", type=float, default=90.0)
+    parser.add_argument("--strategy", choices=["spread_zscore", "momentum_ratio"], default="spread_zscore")
+    parser.add_argument("--momentum_window", type=int, default=60)
+    parser.add_argument("--momentum_threshold", type=float, default=0.0)
     parser.add_argument(
         "--cache_path",
         default="data/raw/fred_oas.pkl",
         help="Path to cache OAS data (pickle).",
+    )
+    parser.add_argument(
+        "--cache_ttl_days",
+        type=int,
+        default=1,
+        help="TTL in days for OAS cache before refetch.",
     )
     parser.add_argument(
         "--no_cache",
@@ -363,8 +383,12 @@ if __name__ == "__main__":
         use_percentile_filter=args.use_percentile,
         lower_percentile=args.lower_pct,
         upper_percentile=args.upper_pct,
+        strategy=args.strategy,
+        momentum_window=args.momentum_window,
+        momentum_threshold=args.momentum_threshold,
         use_oas_cache=not args.no_cache,
         cache_path=args.cache_path,
+        cache_ttl_days=args.cache_ttl_days,
         ig_oas_series_id=args.ig_oas_series,
         hy_oas_series_id=args.hy_oas_series,
         adv_provider=args.adv_provider,

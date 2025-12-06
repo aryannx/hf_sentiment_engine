@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Tuple
@@ -104,11 +105,56 @@ def build_default_steps(cache_root: Path, force_refresh: bool) -> List[Tuple[str
     LOG.info(
         {
             "event": "schedule_built",
+            "mode": "batch",
             "steps": [name for name, _ in steps],
             "cache_root": str(cache_root),
             "force_refresh": force_refresh,
         }
     )
+    return steps
+
+
+def build_intraday_steps(ticker: str = "SPY", interval: str = "5m") -> List[Tuple[str, List[str]]]:
+    """Lightweight intraday loop schedule."""
+    steps = [
+        (
+            "intraday_health",
+            [
+                sys.executable,
+                "-m",
+                "src.main",
+                "--healthcheck",
+            ],
+        ),
+        (
+            "intraday_signals",
+            [
+                sys.executable,
+                "-m",
+                "src.intraday",
+                "--ticker",
+                ticker,
+                "--period",
+                "1d",
+                "--interval",
+                interval,
+                "--provider",
+                "polygon",
+                "--style",
+                "rare",
+                "--alpaca_paper_trade",
+            ],
+        ),
+        (
+            "dq_checks",
+            [
+                sys.executable,
+                "-m",
+                "src.data.dq_runner",
+            ],
+        ),
+    ]
+    LOG.info({"event": "schedule_built", "mode": "intraday", "steps": [name for name, _ in steps]})
     return steps
 
 
@@ -121,6 +167,29 @@ def run_schedule(steps: Iterable[Tuple[str, List[str]]]) -> None:
         "results": [{"step": s, "ok": ok, "secs": secs} for s, ok, secs in results],
     }
     LOG.info(summary)
+
+
+def run_intraday_loop(
+    steps: List[Tuple[str, List[str]]],
+    interval_seconds: int = 300,
+    backoff_factor: float = 2.0,
+    backoff_max: int = 1800,
+) -> None:
+    """
+    Run intraday steps in a loop with exponential backoff on failures.
+    """
+    delay = interval_seconds
+    while True:
+        ok_all = True
+        for name, cmd in steps:
+            _, ok, _ = _run_step(name, cmd)
+            ok_all = ok_all and ok
+        if not ok_all:
+            delay = min(int(delay * backoff_factor), backoff_max)
+            LOG.warn({"event": "intraday_backoff", "delay_secs": delay})
+        else:
+            delay = interval_seconds
+        time.sleep(delay)
 
 
 def parse_args() -> argparse.Namespace:
@@ -141,6 +210,28 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override default steps with custom commands: name=cmd1,cmd2,...",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["batch", "intraday", "all"],
+        default="batch",
+        help="Run nightly batch, intraday loop, or both (batch then intraday loop).",
+    )
+    parser.add_argument(
+        "--intraday_ticker",
+        default="SPY",
+        help="Ticker for intraday loop.",
+    )
+    parser.add_argument(
+        "--intraday_interval",
+        default="5m",
+        help="Interval for intraday loop (e.g., 1m,5m,15m,1h).",
+    )
+    parser.add_argument(
+        "--intraday_sleep",
+        type=int,
+        default=300,
+        help="Base sleep seconds between intraday runs.",
+    )
     return parser.parse_args()
 
 
@@ -156,9 +247,16 @@ def main() -> None:
             cmd = raw_cmd.split(",")
             custom_steps.append((name, cmd))
         steps = custom_steps
-    else:
-        steps = build_default_steps(cache_root, args.force_refresh)
-    run_schedule(steps)
+        run_schedule(steps)
+        return
+
+    if args.mode in ("batch", "all"):
+        batch_steps = build_default_steps(cache_root, args.force_refresh)
+        run_schedule(batch_steps)
+
+    if args.mode in ("intraday", "all"):
+        intraday_steps = build_intraday_steps(args.intraday_ticker, args.intraday_interval)
+        run_intraday_loop(intraday_steps, interval_seconds=args.intraday_sleep)
 
 
 if __name__ == "__main__":

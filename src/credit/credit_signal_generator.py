@@ -57,6 +57,9 @@ class CreditSignalGenerator(BaseSignalGenerator):
         use_percentile_filter: bool = True,
         lower_percentile: float = 10.0,
         upper_percentile: float = 90.0,
+        strategy: str = "spread_zscore",
+        momentum_window: int = 60,
+        momentum_threshold: float = 0.0,
     ) -> np.ndarray:
         """
         Generate daily IG vs HY allocation signals.
@@ -84,6 +87,12 @@ class CreditSignalGenerator(BaseSignalGenerator):
             Lower percentile threshold for HY OAS (e.g., 10.0 for 10th percentile).
         upper_percentile : float
             Upper percentile threshold for HY OAS (e.g., 90.0 for 90th percentile).
+        strategy : str
+            "spread_zscore" (default) or "momentum_ratio".
+        momentum_window : int
+            Rolling window for momentum_ratio strategy (uses HY vs IG return differential).
+        momentum_threshold : float
+            Threshold for momentum_ratio strategy to flip long HY/IG.
 
         Returns
         -------
@@ -97,6 +106,23 @@ class CreditSignalGenerator(BaseSignalGenerator):
 
         # 1) Align sentiment to the price index
         sent = sentiment.reindex(df.index).fillna(0.0)
+
+        signals = np.zeros(len(df), dtype=int)
+
+        if strategy == "momentum_ratio":
+            roll_hy = df["ret_hy"].rolling(momentum_window, min_periods=momentum_window // 2).mean()
+            roll_ig = df["ret_ig"].rolling(momentum_window, min_periods=momentum_window // 2).mean()
+            momentum_diff = (roll_hy - roll_ig).fillna(0.0)
+
+            risk_on = sent > sentiment_threshold
+            risk_off = sent < -sentiment_threshold
+
+            long_hy = risk_on & (momentum_diff > momentum_threshold)
+            long_ig = risk_off & (momentum_diff < -momentum_threshold)
+
+            signals[long_ig.to_numpy()] = +1
+            signals[long_hy.to_numpy()] = -1
+            return signals
 
         # 2) Choose spread measure: OAS if available, else price-based proxy
         use_oas = (

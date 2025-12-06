@@ -3,12 +3,12 @@
 Focus on real-data deliverables; remove fluff.
 
 ## Data & Infra
-- Done: Multi-provider fetch (Finnhub/FMP/FRED/Polygon, yfinance fallback), validators/lineage, logging/metrics/notifier/backup stubs, CI/release workflows, cache registry scaffold.
-- Next: Promote `src/data_pipeline.py` to dual-mode (batch + intraday scheduler/loop with backoff); cache admin + lineage persisted (SQLite/Parquet); DQ alerts piped to notifier; enforced provider priority/quotas + key rotation note; nightly + intraday schedules documented.
+- Done: Multi-provider fetch (Finnhub/FMP/FRED/Polygon, yfinance fallback), validators/lineage, logging/metrics/notifier/backup stubs, CI/release workflows, cache registry scaffold; dual-mode data pipeline (batch + intraday loop with backoff); DQ alerts wired to notifier; provider priority documented; lineage persisted to SQLite.
+- Next: Add provider quota tracking/auto-demotion; extend pipeline CLI to per-asset schedules; Parquet lineage export (optional); richer cache admin UI.
 
 ## Equities
-- Done: Dual-mode signals, sentiment overlay, credit/VIX overlays, benchmark/crisis metrics, multi-ticker aggregator with CSV/JSON/HTML/MD/zip, tests.
-- Next: Crisis replay scripts packaged; standardized report packs (CSV/JSON/MD + ZIP) with templated summaries.
+- Done: Dual-mode signals, sentiment overlay, credit/VIX overlays, benchmark/crisis metrics, multi-ticker aggregator with CSV/JSON/HTML/MD/zip + manifest, crisis windows support, tests; crisis replay script packaged.
+- Next: Add crisis dashboard snippets (plots) to HTML; enrich report templates with per-crisis tables.
 
 ## Credit
 - Done: HY/IG with FRED OAS percentile gating, IG/HY knobs, sentiment sizing, CLI backtester.

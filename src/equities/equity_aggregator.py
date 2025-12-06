@@ -230,6 +230,12 @@ class EquityAggregator:
 
         results = []
 
+        # Store context for reporting
+        self._last_period = period
+        self._last_mode = mode
+        self._last_credit = use_credit_overlay
+        self._last_crisis_windows = crisis_windows
+
         print(f"🚀 Running equity aggregator on {len(tickers)} tickers...")
         print(f"   Mode: {mode} | Period: {period} | Credit overlay: {use_credit_overlay}")
         print(f"   Cost: {cost_bps}bps | OOS validation: {validate_oos}")
@@ -347,7 +353,7 @@ class EquityAggregator:
             csv_path = output_dir / f"equity_aggregator_{timestamp}.csv"
             df.to_csv(csv_path, index=False)
 
-        # JSON export
+        # JSON export (includes crisis windows if present)
         json_path = output_dir / f"equity_aggregator_{timestamp}.json"
         with json_path.open("w", encoding="utf-8") as f:
             json.dump({
@@ -360,6 +366,7 @@ class EquityAggregator:
                         "period": getattr(self, '_last_period', '1y'),
                         "mode": getattr(self, '_last_mode', 'position'),
                         "credit_overlay": getattr(self, '_last_credit', False),
+                        "crisis_windows": getattr(self, '_last_crisis_windows', None),
                     }
                 },
                 "results": results,
@@ -383,12 +390,35 @@ class EquityAggregator:
         except Exception:
             bundle_path = None
 
+        # Manifest for standardized report packs
+        manifest = {
+            "generated": datetime.now().isoformat(),
+            "artifacts": {
+                "csv": str(csv_path) if successful else None,
+                "json": str(json_path),
+                "html": str(html_path),
+                "summary_md": str(summary_path),
+                "bundle_zip": str(bundle_path) if bundle_path else None,
+            },
+            "tickers": [r.get("ticker") for r in successful],
+            "failed": [r.get("ticker") for r in failed],
+            "parameters": {
+                "period": getattr(self, "_last_period", "1y"),
+                "mode": getattr(self, "_last_mode", "position"),
+                "credit_overlay": getattr(self, "_last_credit", False),
+                "crisis_windows": getattr(self, "_last_crisis_windows", None),
+            },
+        }
+        manifest_path = output_dir / f"equity_aggregator_{timestamp}_manifest.json"
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
         return {
             "csv": csv_path if successful else None,
             "json": json_path,
             "html": html_path,
             "summary": summary_path,
             "bundle": bundle_path,
+            "manifest": manifest_path,
         }
 
     def _generate_html_report(

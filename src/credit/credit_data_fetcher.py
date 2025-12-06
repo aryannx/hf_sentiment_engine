@@ -10,8 +10,9 @@ Uses:
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Optional
 
 from dotenv import load_dotenv
@@ -40,6 +41,7 @@ class CreditDataFetcher(BaseDataFetcher):
         ig_oas_series_id: str = "BAMLC0A0CM",   # ICE BofA US Corp Master OAS
         hy_oas_series_id: str = "BAMLH0A0HYM2",  # ICE BofA US High Yield OAS
         cache_path: Optional[str | Path] = None,
+        cache_ttl_days: int = 1,
         use_curl_session: bool = True,
     ):
         self.ig_ticker = ig_ticker
@@ -48,6 +50,7 @@ class CreditDataFetcher(BaseDataFetcher):
         self.hy_oas_series_id = hy_oas_series_id
         # Default cache lives under data/raw (gitignored)
         self.cache_path = Path(cache_path) if cache_path else Path("data/raw/fred_oas.pkl")
+        self.cache_ttl_days = cache_ttl_days
         self.use_curl_session = use_curl_session
         self.polygon_key = os.getenv("POLYGON_API_KEY")
         self.fred_key = os.getenv("FRED_API_KEY")
@@ -216,6 +219,23 @@ class CreditDataFetcher(BaseDataFetcher):
         try:
             if not self.cache_path.is_file():
                 return None
+            # TTL check using meta or mtime
+            meta_path = self.cache_path.with_suffix(".meta.json")
+            saved_at = None
+            if meta_path.is_file():
+                try:
+                    meta = json.loads(meta_path.read_text())
+                    saved_at = datetime.fromisoformat(meta.get("saved_at"))
+                except Exception:
+                    saved_at = None
+            if saved_at is None:
+                mtime = self.cache_path.stat().st_mtime
+                saved_at = datetime.fromtimestamp(mtime)
+
+            age_days = (datetime.utcnow() - saved_at).total_seconds() / 86400
+            if age_days > self.cache_ttl_days:
+                print(f"[INFO] OAS cache stale ({age_days:.1f}d > {self.cache_ttl_days}d); ignoring.")
+                return None
             df = pd.read_pickle(self.cache_path)
             if "Date" in df.columns:
                 df = df.set_index("Date")
@@ -237,6 +257,16 @@ class CreditDataFetcher(BaseDataFetcher):
                     df_to_save = pd.concat([existing, df_to_save]).sort_index()
             df_to_save.to_pickle(self.cache_path)
             print(f"💾 Saved OAS cache → {self.cache_path}")
+            # provenance
+            meta = {
+                "saved_at": datetime.utcnow().isoformat(),
+                "rows": len(df_to_save),
+                "columns": list(df_to_save.columns),
+                "checksum": checksum_df(df_to_save.reset_index()),
+                "source": "fred",
+            }
+            meta_path = self.cache_path.with_suffix(".meta.json")
+            meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
         except Exception as e:
             print(f"[WARN] Failed to save OAS cache {self.cache_path}: {e}")
 

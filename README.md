@@ -1,47 +1,46 @@
 # Modular Quant Platform
 
-Multi-asset systematic research platform that mirrors an institutional hedge-fund workflow across equities, credit, and volatility. The system fuses technical signals, multi-source NLP sentiment, macro overlays, and portfolio construction so you can prototype strategies, run realistic backtests, and export production-ready signals.
+Multi-asset systematic research platform that mirrors an institutional hedge-fund workflow across equities, credit, and volatility. The system fuses technical signals, multi-source NLP sentiment, macro overlays, and portfolio construction so you can prototype strategies, run realistic backtests, and export production-ready signals with hedge-fund-style ops/controls.
 
 ## Executive Summary
 
-- **Multi-asset coverage**: Equities, credit (HY/IG), volatility (VIX/ETNs), intraday/HFT-lite; real data only (Polygon/Finnhub/FMP/FRED/yfinance fallback, Alpaca-ready).
+- **Multi-asset coverage**: Equities, credit (HY/IG), volatility (VIX/ETNs), intraday/HFT-lite; real data only (Polygon→Finnhub primary, yfinance fallback; FRED for credit; Alpaca-ready logging).
 - **Cost- and risk-aware backtesting**: Event + position modes, transaction costs, benchmark/crisis overlays, credit/VIX throttles, PMS/risk hooks.
-- **Execution/ops scaffolds**: OMS simulator with TCA hooks, middle-office booking/recon stubs, compliance checks, logging/metrics/healthchecks, cache registry.
-- **Docs & CI**: Runbook, release notes, project gaps tracker, research tracker; GitHub Actions for CI, release tagging/builds, and smoke matrix.
+- **Execution/ops scaffolds**: OMS simulator + bridges, TCA hooks, middle-office booking/recon stubs, compliance checks, logging/metrics/healthchecks, cache/lineage registry.
+- **Docs & CI**: Runbook/on-call, release notes, project gaps tracker, research tracker; GitHub Actions for CI, release tagging/builds, smoke matrix; ops scripts for health probes/DR drills/report bundling.
 
 The detailed intent, differentiators, and interview narrative live in [`docs/hf_drive_doc.pdf`](docs/hf_drive_doc.pdf). This README distills the execution plan and links to runnable components.
 
 ## Architecture at a Glance
 
 ```
-┌─────────────────────────────┐
-│ Data Ingestion Layer        │ FMP, Finnhub, FRED, yfinance, scrapers, caching
-└───────────────┬─────────────┘
+┌───────────────────────────────┐
+│ Data Ingestion Layer          │ Polygon/Finnhub/FMP/FRED (yfinance fallback), caching, lineage/DQ
+└───────────────┬───────────────┘
                 ↓
-┌─────────────────────────────┐
-│ Signal Modules              │
+┌───────────────────────────────┐
+│ Signal Modules                │
 │  • Equities: mean reversion + sentiment, dual modes
 │  • Credit: HY-IG spreads, OAS percentiles, trend variant
 │  • Volatility: VIX term-structure, vol-of-vol, macro overlays
 │  • Intraday: 1h/5m Bollinger + RSI/Stochastic mean reversion, microstructure hooks
-└───────────────┬─────────────┘
+└───────────────┬───────────────┘
                 ↓
-┌─────────────────────────────┐
-│ Portfolio & Risk Layer      │
-│  • Static/dynamic weights   │
-│  • Credit/VIX risk throttles│
-│  • Target-vol scaling       │
-│  • Correlation analytics    │
-└───────────────┬─────────────┘
+┌───────────────────────────────┐
+│ Portfolio, Risk & Compliance  │ Targets/drift/turnover, risk limits/VAR, throttles, pre/post-trade checks
+└───────────────┬───────────────┘
                 ↓
-┌─────────────────────────────┐
-│ Backtesting & Reporting     │
-│  • Event & position runners │
-│  • Transaction costs        │
-│  • Walk-forward / OOS       │
-│  • Monte Carlo envelopes    │
-│  • Signal export + dashboard│
-└─────────────────────────────┘
+┌───────────────────────────────┐
+│ Execution & TCA               │ OMS sim/bridges, routes/fills, slippage/partials, TCA hooks
+└───────────────┬───────────────┘
+                ↓
+┌───────────────────────────────┐
+│ Middle Office / IBOR          │ Booking/recon stubs, settlement scaffolds, corporate actions (planned)
+└───────────────┬───────────────┘
+                ↓
+┌───────────────────────────────┐
+│ Backtesting & Reporting       │ Event/position runners, costs, OOS, MC envelopes (planned), reports
+└───────────────────────────────┘
 ```
 
 ## Technology Stack
@@ -51,10 +50,12 @@ The detailed intent, differentiators, and interview narrative live in [`docs/hf_
 | Core language       | Python 3.9+, `pandas`, `numpy`, `pydantic` (planned)                   |
 | Technical analysis  | `TA-Lib`, `pandas-ta`, in-house indicators                            |
 | Sentiment / NLP     | `nltk` (VADER), `textblob`, custom keyword filters                    |
-| Data sources        | Polygon (primary intraday/equity), Finnhub (secondary), FRED (credit), yfinance (fallback) |
+| Data sources        | Polygon (primary intraday/equity), Finnhub (secondary), FRED (credit), yfinance (fallback); Alpaca-ready logging |
 | Backtesting         | Custom engines in `src/equities`, `src/credit`, `src/volatility`      |
 | Visualization       | `matplotlib`, `seaborn`, `plotly`, Streamlit dashboard (`app/`)       |
 | Storage             | SQLite/pickle caches (planned), CSV/JSON signal export                |
+| Orchestration / CI  | GitHub Actions (`ci.yml`, `release-tag.yml`, `release-build.yml`, `smoke-matrix.yml`) |
+| Ops / Monitoring    | JSON logging, metrics/notifier stubs, `scripts/health_probe.py`, DR/tabletop scripts |
 | Tooling             | `pytest`, `black`, `ruff` (optional), Git, virtualenv                 |
 
 ## Repository Layout
@@ -62,15 +63,21 @@ The detailed intent, differentiators, and interview narrative live in [`docs/hf_
 ```
 hf_sentiment_engine/
 ├── app/                     # Streamlit dashboard shell
-├── docs/                    # Design docs, runbooks, PDFs
+├── docs/                    # Design docs, runbooks, gaps tracker, on-call, templates
 ├── src/
 │   ├── equities/            # Data fetchers, sentiment, signals, backtester
 │   ├── credit/              # HY/IG spread engines, sentiment overlays
-│   ├── volatility/          # VIX + vol module (WIP)
-│   ├── intraday/            # Day-trader module (multi-provider data, signals, CLI)
-│   ├── core/                # Shared signal helpers, base classes
+│   ├── volatility/          # VIX + vol module
+│   ├── intraday/            # Day-trader module (multi-provider data, signals, CLI, execution logger)
+│   ├── pms/                 # Portfolio management (config, rebalancer, risk stubs)
+│   ├── middle_office/       # Booking/recon/IBOR scaffolds, corporate actions (stub)
+│   ├── core/                # Shared signal helpers, OMS models/sim/bridges, compliance, logging/metrics/notifier
+│   ├── data/                # Validators, lineage, cross-source checks, DQ runner
+│   ├── reporting/           # Holdings/perf helpers, audit, report generation templates
+│   ├── risk/                # Risk limits/config/engine (if present)
 │   └── utils/               # Metrics, validators, export hooks
-├── tests/                   # pytest suites (placeholders to be expanded)
+├── scripts/                 # health_probe, DR tabletop, report bundling, backup
+├── tests/                   # pytest suites (signals, risk, MO, vol, intraday)
 ├── requirements.txt
 ├── .env.example             # Environment variable template
 └── README.md
