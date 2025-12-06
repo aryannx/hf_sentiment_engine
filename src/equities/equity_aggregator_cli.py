@@ -14,13 +14,19 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add src/ to path
-PROJECT_ROOT = Path(__file__).parent.parent
+# Add project root to path for src.* imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from equities.equity_aggregator import EquityAggregator, get_top_tickers
-from core.compliance_engine import ComplianceEngine
-from core.compliance_rules import default_compliance_config
+from src.equities.equity_aggregator import EquityAggregator, get_top_tickers
+from src.core.compliance_engine import ComplianceEngine
+from src.core.compliance_rules import default_compliance_config
+from src.risk.config import default_risk_config
+from src.risk.engine import RiskEngine
+from src.risk.models import Position as RiskPosition
+from src.exec.config import TCAConfig
+from src.exec.providers.polygon_hooks import adv_lookup_polygon, spread_lookup_polygon
+from src.exec.providers.finnhub_hooks import adv_lookup_finnhub, spread_lookup_finnhub
 
 
 def main():
@@ -94,6 +100,29 @@ def main():
         action="store_true",
         help="Skip heatmap generation in HTML report"
     )
+    parser.add_argument(
+        "--risk-check",
+        action="store_true",
+        help="Enable simple pre-flight risk limit check on requested tickers."
+    )
+    parser.add_argument(
+        "--risk-nav",
+        type=float,
+        default=100000.0,
+        help="Assumed NAV for risk checks."
+    )
+    parser.add_argument(
+        "--adv-provider",
+        choices=["static", "polygon", "finnhub"],
+        default="static",
+        help="ADV source for execution/TCA estimates.",
+    )
+    parser.add_argument(
+        "--spread-provider",
+        choices=["static", "polygon", "finnhub"],
+        default="static",
+        help="Spread source for execution/TCA estimates.",
+    )
 
     args = parser.parse_args()
 
@@ -138,6 +167,22 @@ def main():
             if res.severity == "warn":
                 print(f"   - {res.name}: {res.message}")
 
+    # Simple risk limits check using placeholder prices (1 unit each)
+    risk_engine = RiskEngine(default_risk_config())
+    if args.risk_check:
+        positions = [RiskPosition(ticker=t, qty=1.0, price=100.0, sector=None, beta=1.0) for t in tickers]
+        risk = risk_engine.check_limits(positions, nav=args.risk_nav, strategy="equity_agg", portfolio="watchlist")
+        if risk["decision"] == "block":
+            print("❌ Risk block on universe:")
+            for b in risk["breaches"]:
+                if b.severity == "block":
+                    print(f"   - {b.level}:{b.name} -> {b.message}")
+            return 1
+        if risk["decision"] == "warn":
+            for b in risk["breaches"]:
+                if b.severity == "warn":
+                    print(f"⚠️ Risk warning: {b.level}:{b.name} -> {b.message}")
+
     # Initialize aggregator
     aggregator = EquityAggregator()
 
@@ -145,6 +190,18 @@ def main():
     aggregator._last_period = args.period
     aggregator._last_mode = args.mode
     aggregator._last_credit = args.credit_overlay
+
+    # Configure ADV/spread providers
+    adv_lookup = 1_000_000.0
+    spread_lookup = None
+    if args.adv_provider == "polygon":
+        adv_lookup = adv_lookup_polygon
+    elif args.adv_provider == "finnhub":
+        adv_lookup = adv_lookup_finnhub
+    if args.spread_provider == "polygon":
+        spread_lookup = spread_lookup_polygon
+    elif args.spread_provider == "finnhub":
+        spread_lookup = spread_lookup_finnhub
 
     # Run multi-ticker analysis
     results = aggregator.run_multi_ticker(
@@ -155,6 +212,8 @@ def main():
         cost_bps=args.cost_bps,
         validate_oos=args.validate_oos,
         max_workers=args.max_workers,
+        adv_lookup=adv_lookup,
+        spread_lookup=spread_lookup,
     )
 
     # Generate reports

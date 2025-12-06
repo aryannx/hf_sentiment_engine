@@ -98,7 +98,16 @@
 
 ---
 
-## 4. Roadmap
+## 4. Risk Management & Limits Framework
+
+- **Hedge-fund grade expectations:** Multi-layer limits (strategy/portfolio/firm), real-time exposure/VAR/stress, correlation and concentration controls, margin and liquidity waterfalls, and live monitoring with alerts.
+- **Current state:** Basic transaction-cost modeling and a VIX-based throttle; no formal limit configs, no live exposure/VAR/stress, no margin/liquidity checks, and no real-time risk monitoring.
+- **Why it matters:** Prevents blowups and forced liquidations (LTCM, Archegos); protects PnL during tail events and correlation spikes; makes the platform interview-ready for institutional workflows.
+- **Next steps:** Add limit configs per layer, exposure calculators (gross/net/beta), scenario/VAR approximations, margin/liquidity stubs, and monitoring hooks tied to logging/metrics/notifier.
+
+---
+
+## 5. Roadmap
 
 ### Immediate (1–2 Weeks)
 1. Re-enable GitHub CI (PAT/SSH) + lint/test workflow.  
@@ -122,7 +131,7 @@
 
 ---
 
-## 5. Task Matrix
+## 6. Task Matrix
 
 | Area | Task | Status |
 | --- | --- | --- |
@@ -134,6 +143,7 @@
 | Volatility | VIX parser + contango strategy | Planned |
 | Intraday | Delta/volume gating, FX support, breakout mode | Planned |
 | Portfolio | Covariance + target-vol engine | Planned |
+| Risk | Multi-layer limits, VAR/stress shocks, margin/liquidity stubs | Planned |
 | AI Copilot | Embedding + retrieval service | Planned |
 | Execution | Alpaca paper adapter, IBKR/Bloomberg bridge | Planned |
 | OMS | Order/route/fill scaffold + simulated execution | ✅ Complete |
@@ -146,7 +156,7 @@
 
 ---
 
-## 6. Interview & Demo Talking Points
+## 7. Interview & Demo Talking Points
 - Intraday rarity narrative (“algo never sleeps”) with demo command.  
 - Cross-asset overlays (credit/VIX) throttling equities.  
 - Ops discipline (runbook, caching, logging, pytest).  
@@ -155,7 +165,7 @@
 
 ---
 
-## 7. Action Items
+## 8. Action Items
 
 ### Tier 1 – Immediate (This Week)
 | Owner | Action | Status |
@@ -172,6 +182,7 @@
 | Owner | Action | Target |
 | --- | --- | --- |
 | Aryan | Intraday delta/volume gating + FX support | Mid Dec |
+| Aryan | Risk limits framework (strategy/portfolio/firm layers) | Mid Dec |
 | Aryan | Build AI copilot MVP (embeddings + retrieval) | Mid Dec |
 | TBD | VIX parser & strategy | Late Dec |
 | TBD | Portfolio target-vol engine | Late Dec |

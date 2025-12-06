@@ -7,6 +7,9 @@ from typing import List, Optional
 
 import pandas as pd
 from src.core.metrics import MetricsCollector
+from src.risk.config import default_risk_config
+from src.risk.engine import RiskEngine
+from src.risk.models import Position as RiskPosition
 
 from .intraday_backtester import IntradayBacktester
 from .intraday_data_fetcher import IntradayDataFetcher
@@ -68,6 +71,7 @@ def main() -> None:
     metrics_collector = MetricsCollector(enable=os.getenv("METRICS_ENABLED") == "1")
     metrics_collector.counter("intraday_run_start", ticker=args.ticker, provider=args.provider)
     start_time = time.time()
+    risk_engine = RiskEngine(default_risk_config())
 
     fetcher = IntradayDataFetcher()
     data = fetcher.fetch(
@@ -78,6 +82,16 @@ def main() -> None:
     )
     if data.empty:
         raise SystemExit(f"No data returned for {args.ticker}")
+
+    latest_px = float(data["Close"].iloc[-1])
+    positions = [RiskPosition(ticker=args.ticker, qty=1.0, price=latest_px, sector=None, beta=1.0)]
+    risk = risk_engine.check_limits(positions, nav=100000.0, strategy="intraday", portfolio="default")
+    if risk["decision"] == "block":
+        raise SystemExit("Risk block before intraday run: " + "; ".join([b.message for b in risk["breaches"] if b.severity == "block"]))
+    if risk["decision"] == "warn":
+        for b in risk["breaches"]:
+            if b.severity == "warn":
+                print(f"⚠️ Risk warning: {b.level}:{b.name} -> {b.message}")
 
     generator = IntradaySignalGenerator()
     confirmations = _parse_list(args.confirmations)

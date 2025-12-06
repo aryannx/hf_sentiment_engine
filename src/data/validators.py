@@ -3,7 +3,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Callable, Dict, List, Optional
+
+from src.core.notifier import notify
 
 
 def check_staleness(df: pd.DataFrame, date_col: str = "Date", max_age_days: int = 2) -> List[str]:
@@ -42,9 +44,29 @@ def check_spikes(df: pd.DataFrame, price_col: str = "Close", z_thresh: float = 5
 
 
 def run_validations(df: pd.DataFrame, required_cols: List[str], date_col: str = "Date") -> List[str]:
-    msgs = []
+    return _run_validations(df, required_cols, date_col=date_col, alert=False, notifier=None)
+
+
+def _run_validations(
+    df: pd.DataFrame,
+    required_cols: List[str],
+    date_col: str = "Date",
+    alert: bool = False,
+    notifier: Optional[Callable[[str, str], None]] = None,
+) -> List[str]:
+    """
+    Core validator runner. Set alert=True to emit warnings via notifier/notify.
+    """
+    msgs: List[str] = []
     msgs.extend(check_staleness(df, date_col=date_col))
     msgs.extend(check_missing(df, required_cols))
     msgs.extend(check_spikes(df))
+
+    if alert and msgs:
+        for m in msgs:
+            if notifier:
+                notifier(m, "warn")
+            else:
+                notify(m, level="warn")
     return msgs
 

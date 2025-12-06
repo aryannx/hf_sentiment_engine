@@ -27,7 +27,12 @@ from src.core.compliance_rules import default_compliance_config
 from src.core.oms_models import Order, OrderSide
 from src.core.oms_simulator import ExecutionSimulator
 from src.core.oms_config import ExecutionConfig
+from exec.providers.polygon_hooks import adv_lookup_polygon, spread_lookup_polygon
+from exec.providers.finnhub_hooks import adv_lookup_finnhub, spread_lookup_finnhub
 from src.core.position_ledger import PositionLedger
+from risk.config import default_risk_config
+from risk.engine import RiskEngine
+from risk.models import Position as RiskPosition
 from src.core.metrics import MetricsCollector
 
 
@@ -61,6 +66,8 @@ class CreditBacktester:
         ig_oas_series_id: str = "BAMLC0A0CM",
         hy_oas_series_id: str = "BAMLH0A0HYM2",
         simulate_execution: bool = False,
+        adv_provider: str = "static",
+        spread_provider: str = "static",
     ) -> Dict[str, float]:
         """
         End-to-end credit backtest for IG vs HY pair.
@@ -68,6 +75,7 @@ class CreditBacktester:
         metrics_collector = MetricsCollector(enable=os.getenv("METRICS_ENABLED") == "1")
         metrics_collector.counter("credit_backtest_start", ig=ig_ticker, hy=hy_ticker)
         start_time = time.time()
+        risk_engine = RiskEngine(default_risk_config())
         # 0) Pre-trade compliance (two-leg notional assumption)
         engine = ComplianceEngine(default_compliance_config())
         per_leg = self.notional_per_leg * 100000.0  # interpret notional_per_leg as scaling of base
@@ -98,6 +106,21 @@ class CreditBacktester:
             raise RuntimeError("Failed to fetch IG/HY ETF data; cannot run credit backtest.")
 
         aligned = CreditDataFetcher.align_ig_hy(ig_df, hy_df)
+
+        # Risk limits check on pair notionals
+        latest_ig = float(aligned[ig_ticker]["close"].iloc[-1])
+        latest_hy = float(aligned[hy_ticker]["close"].iloc[-1])
+        positions = [
+            RiskPosition(ticker=ig_ticker, qty=1.0, price=latest_ig, sector="IG", beta=1.0),
+            RiskPosition(ticker=hy_ticker, qty=-1.0, price=latest_hy, sector="HY", beta=1.0),
+        ]
+        risk = risk_engine.check_limits(positions, nav=self.initial_cash, strategy="credit", portfolio="default")
+        if risk["decision"] == "block":
+            raise RuntimeError("Risk block before credit backtest: " + "; ".join([b.message for b in risk["breaches"] if b.severity == "block"]))
+        if risk["decision"] == "warn":
+            for b in risk["breaches"]:
+                if b.severity == "warn":
+                    print(f"⚠️ Risk warning: {b.level}:{b.name} -> {b.message}")
 
         # 2) OAS spreads
         start_oas = aligned.index.min().strftime("%Y-%m-%d")
@@ -146,7 +169,21 @@ class CreditBacktester:
                     )
                     last_sig = sig
 
-            exec_sim = ExecutionSimulator(ExecutionConfig(slippage_bps=cost_bps))
+        def _resolve_lookup(provider: str, poly_fn, finn_fn, default):
+            if provider == "polygon":
+                return poly_fn
+            if provider == "finnhub":
+                return finn_fn
+            return default
+
+        adv_lookup = _resolve_lookup(adv_provider, adv_lookup_polygon, adv_lookup_finnhub, 1_000_000.0)
+        spread_lookup = _resolve_lookup(spread_provider, spread_lookup_polygon, spread_lookup_finnhub, None)
+
+        exec_sim = ExecutionSimulator(
+            ExecutionConfig(slippage_bps=cost_bps),
+            adv_lookup=adv_lookup,
+            spread_lookup=spread_lookup,
+        )
             ledger = PositionLedger(starting_cash=self.initial_cash)
             for o in orders:
                 o, fills = exec_sim.execute(o)
@@ -291,6 +328,18 @@ if __name__ == "__main__":
         default="BAMLH0A0HYM2",
         help="FRED series ID for HY OAS (default BAMLH0A0HYM2).",
     )
+    parser.add_argument(
+        "--adv_provider",
+        choices=["static", "polygon", "finnhub"],
+        default="static",
+        help="ADV source for execution simulation.",
+    )
+    parser.add_argument(
+        "--spread_provider",
+        choices=["static", "polygon", "finnhub"],
+        default="static",
+        help="Spread source for execution simulation.",
+    )
     args = parser.parse_args()
 
     if args.healthcheck:
@@ -318,6 +367,8 @@ if __name__ == "__main__":
         cache_path=args.cache_path,
         ig_oas_series_id=args.ig_oas_series,
         hy_oas_series_id=args.hy_oas_series,
+        adv_provider=args.adv_provider,
+        spread_provider=args.spread_provider,
     )
     bt.report(metrics)
     print("\n✅ Credit backtest complete!")

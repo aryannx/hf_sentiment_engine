@@ -36,6 +36,11 @@ from core.position_ledger import PositionLedger
 from pms.config import demo_pms_config
 from pms.rebalancer import Rebalancer
 from core.metrics import MetricsCollector
+from risk.config import default_risk_config
+from risk.engine import RiskEngine
+from risk.models import Position
+from exec.providers.polygon_hooks import adv_lookup_polygon, spread_lookup_polygon
+from exec.providers.finnhub_hooks import adv_lookup_finnhub, spread_lookup_finnhub
 
 try:
     from credit.credit_sentiment_analyzer import CreditSentimentAnalyzer
@@ -109,6 +114,8 @@ def run_equity_pipeline(
     validate_oos: bool = False,
     simulate_execution: bool = False,
     pms_rebalance: bool = False,
+    adv_provider: str = "static",
+    spread_provider: str = "static",
 ):
     """
     End-to-end equity sentiment + signal + backtest pipeline.
@@ -126,6 +133,7 @@ def run_equity_pipeline(
         "position" -> hold position until explicit exit
     """
     metrics_collector = MetricsCollector(enable=os.getenv("METRICS_ENABLED") == "1")
+    risk_engine = RiskEngine(default_risk_config())
     metrics_collector.counter("equity_pipeline_start", ticker=ticker, mode=mode)
     start_time = time.time()
 
@@ -162,6 +170,21 @@ def run_equity_pipeline(
         return None
 
     print(f"✅ {len(price_data)} rows of OHLCV + indicators")
+
+    # Risk limits check using latest close
+    price_hint = float(price_data["Close"].iloc[-1])
+    positions = [Position(ticker=ticker, qty=1.0, price=price_hint, sector=None, beta=1.0)]
+    risk = risk_engine.check_limits(positions, nav=100000.0, strategy="equity", portfolio="default")
+    if risk["decision"] == "block":
+        print("❌ Risk block before running pipeline:")
+        for b in risk["breaches"]:
+            if b.severity == "block":
+                print(f" - {b.level}:{b.name} -> {b.message}")
+        return None
+    if risk["decision"] == "warn":
+        for b in risk["breaches"]:
+            if b.severity == "warn":
+                print(f"⚠️ Risk warning: {b.level}:{b.name} -> {b.message}")
 
     # 2) Build daily sentiment series from APIs  --------------------
     analyzer = EquitySentimentAnalyzer()
@@ -218,6 +241,14 @@ def run_equity_pipeline(
             print(f"⚠️ Credit overlay failed: {e}. Proceeding without overlay.")
             risk_multiplier = None
 
+    # Choose ADV/spread lookups for execution sim path
+    def _resolve_lookup(provider: str, polygon_fn, finnhub_fn, default):
+        if provider == "polygon":
+            return polygon_fn
+        if provider == "finnhub":
+            return finnhub_fn
+        return default
+
     # 5) Backtest  --------------------
     print("\n📈 Running backtest...")
     if simulate_execution:
@@ -239,7 +270,14 @@ def run_equity_pipeline(
                 )
                 last_sig = sig
 
-        exec_sim = ExecutionSimulator(ExecutionConfig(slippage_bps=cost_bps))
+        adv_lookup = _resolve_lookup(adv_provider, adv_lookup_polygon, adv_lookup_finnhub, 1_000_000.0)
+        spread_lookup = _resolve_lookup(spread_provider, spread_lookup_polygon, spread_lookup_finnhub, None)
+
+        exec_sim = ExecutionSimulator(
+            ExecutionConfig(slippage_bps=cost_bps),
+            adv_lookup=adv_lookup,
+            spread_lookup=spread_lookup,
+        )
         ledger = PositionLedger(starting_cash=100000.0)
 
         for o in orders:
@@ -386,6 +424,18 @@ if __name__ == "__main__":
         default="reports",
         help="Directory where aggregated CSV/JSON outputs will be stored.",
     )
+    parser.add_argument(
+        "--adv_provider",
+        choices=["static", "polygon", "finnhub"],
+        default="static",
+        help="ADV source for execution simulation (simulate_execution mode).",
+    )
+    parser.add_argument(
+        "--spread_provider",
+        choices=["static", "polygon", "finnhub"],
+        default="static",
+        help="Spread source for execution simulation (simulate_execution mode).",
+    )
     args = parser.parse_args()
 
     if args.healthcheck:
@@ -421,6 +471,8 @@ if __name__ == "__main__":
                 cost_bps=args.cost_bps,
                 split_ratio=args.split,
                 validate_oos=args.validate_oos,
+                adv_provider=args.adv_provider,
+                spread_provider=args.spread_provider,
             )
         except Exception as exc:  # pragma: no cover - defensive logging
             print(f"❌ Pipeline failed for {symbol}: {exc}")

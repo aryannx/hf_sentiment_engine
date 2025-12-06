@@ -226,6 +226,14 @@ All commands emit CSV/JSON/HTML reports in `reports/` (or custom `--output` dire
 - **Backups:** `scripts/backup.sh` snapshots `logs`, `reports`, and `data` to `backups/<timestamp>/`.
 - **DR checklist:** `docs/dr_checklist.md`; operational details live in `docs/RUNBOOK.md`.
 
+## Risk Management & Limits (New)
+
+- **Config & limits:** `src/risk/config.py` defines strategy/portfolio/firm limits (max position %, gross/net leverage, sector caps, concentration, liquidity buffer) plus stress shocks and VAR alpha.
+- **Engine:** `src/risk/engine.py` computes exposures (gross/net/beta) and evaluates limits with block/warn severities; uses `risk.models.Position`.
+- **Scenarios/VAR:** `src/risk/scenario.py` offers simple shocks and historical/parametric VAR helpers. Margin/ liquidity stubs in `src/risk/margin.py`.
+- **Integrations:** Equity runner, credit backtester, intraday CLI, and aggregator CLI optionally perform pre-flight risk checks (see flags). Alerts/metrics tie into existing logging/metrics/notifier.
+- **Next:** richer real-time risk, correlation tracking, margin waterfalls, and volatility module integration.
+
 ## Regulatory & Investor Reporting (Scaffold)
 
 - **Holdings/Perf helpers:** `src/reporting/holdings.py` (13F-like snapshot, top holdings) and `src/reporting/performance.py` (perf summary: return, Sharpe, Sortino, max DD, monthly returns).

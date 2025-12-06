@@ -1,0 +1,33 @@
+name: Release Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag name (e.g., v0.1.0)"
+        required: true
+      title:
+        description: "Release title"
+        required: false
+      body:
+        description: "Release notes body"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          release_name: ${{ github.event.inputs.title || github.event.inputs.tag }}
+          body: ${{ github.event.inputs.body || 'Automated release' }}
+

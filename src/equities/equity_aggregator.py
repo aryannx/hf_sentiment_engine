@@ -60,6 +60,8 @@ class EquityAggregator:
         cost_bps: float = 0.0,
         split_ratio: float = 1.0,
         validate_oos: bool = False,
+        adv_lookup: Any = 1_000_000.0,
+        spread_lookup: Any = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Run complete equity pipeline for single ticker.
@@ -111,6 +113,8 @@ class EquityAggregator:
                 cost_bps=cost_bps,
                 split_ratio=split_ratio,
                 validate_oos=validate_oos,
+                adv_lookup=adv_lookup,
+                spread_lookup=spread_lookup,
             )
 
             # 6. Add strategy report
@@ -175,6 +179,8 @@ class EquityAggregator:
         split_ratio: float = 1.0,
         validate_oos: bool = False,
         max_workers: int = 4,
+        adv_lookup: Any = 1_000_000.0,
+        spread_lookup: Any = None,
     ) -> List[Dict[str, Any]]:
         """
         Run equity pipeline on multiple tickers with parallel processing.
@@ -199,6 +205,8 @@ class EquityAggregator:
                     cost_bps,
                     split_ratio,
                     validate_oos,
+                    adv_lookup,
+                    spread_lookup,
                 ): ticker
                 for ticker in tickers
             }

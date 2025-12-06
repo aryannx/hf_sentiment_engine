@@ -17,7 +17,7 @@ import sys
 from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
 import pandas as pd
@@ -58,6 +58,8 @@ class EquityBacktester:
         cost_bps: float = 0.0,
         split_ratio: float = 1.0,
         validate_oos: bool = False,
+        adv_lookup: Any = 1_000_000.0,
+        spread_lookup: Any = None,
     ) -> Dict[str, float]:
         """
         Backtest a set of signals on price data.

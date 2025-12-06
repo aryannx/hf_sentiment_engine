@@ -15,10 +15,12 @@
 
 | Var | Description | Rotation |
 | --- | ----------- | -------- |
-| `FINNHUB_API_KEY` | Primary price/news/sentiment | 90 days / on leak |
-| `FMP_API_KEY`     | Fundamentals + news           | 90 days |
-| `FRED_API_KEY`    | Macro data                    | Annual |
-| `POLYGON_API_KEY` | Intraday bars (intraday module) | Monthly usage review |
+| `FINNHUB_API_KEY` | Primary price/news/sentiment | Rotate every 90 days or on leak |
+| `FMP_API_KEY`     | Fundamentals + news           | Rotate every 90 days |
+| `FRED_API_KEY`    | Macro data                    | Rotate annually |
+| `POLYGON_API_KEY` | Intraday bars (intraday module) | Monthly usage review; rotate quarterly |
+
+**Key rotation procedure:** store new keys in `.env` (local) and GitHub Actions secrets (CI). Rotate on cadence or on any leak/429 spike; validate with `python -m src.main --healthcheck` after rotation and log the change in release notes.
 
 ## 2. Nightly Batch Schedule (UTC-5)
 
@@ -43,10 +45,25 @@ Each job logs to `logs/signal_engine.log` (rolling 20 MB) with `INFO` baseline.
 - After fetch:
   - Persist raw JSON/CSV.
   - Append ingestion log entry for auditing (`logs/ingestion.log`).
-- Emergency purge:
+- Emergency purge/list:
   ```bash
+  python scripts/cache_admin.py --list --provider finnhub --symbol AAPL
   python scripts/cache_admin.py --purge --provider finnhub --symbol AAPL
   ```
+
+## 3a. Data Pipeline Orchestrator (new)
+
+- Entry point: `python -m src.data_pipeline` runs the default nightly schedule (healthcheck → equities watchlist → credit OAS → volatility placeholder → portfolio aggregation).
+- Flags:
+  - `--force_refresh` propagates refresh to fetchers where supported.
+  - `--steps name=cmd1,cmd2,...` overrides the schedule (comma-separated command tokens).
+- Logs: structured JSON via `src.core.logging_utils`, emitted to stdout (configure redirection in your process manager).
+- Cache registry: fetchers may log cache writes via `src.data.cache_registry`; registry lives in `logs/cache_registry/registry.jsonl` for audit/debug.
+
+## 3b. Release Tagging (CI)
+
+- Workflow: `.github/workflows/release-tag.yml` (manual trigger).
+- Use GitHub UI → Actions → Release Tag → provide `tag` (e.g., v0.1.0), optional title/body. Creates a GitHub release with the tag using `GITHUB_TOKEN`.
 
 ## 4. Error Handling & Retries
 
@@ -116,6 +133,14 @@ Before merging to `main` or cutting a release:
 - Ad-hoc snapshot: `bash scripts/backup.sh` (archives `logs`, `reports`, `data/raw`, `data/cache` into `backups/<timestamp>/`).
 - Verify backups: `ls backups/` and inspect latest tarballs.
 - On-call checklist: see `docs/dr_checklist.md` for step-by-step probes and incident logging.
+
+## 11. Risk Management & Limits (New)
+
+- Config: `src/risk/config.py` (strategy/portfolio/firm limits, sector caps, liquidity buffers, shocks, VAR alpha).
+- Engine: `src/risk/engine.py` computes gross/net/beta exposures and evaluates limits; breaches are block/warn.
+- Scenarios/VAR: `src/risk/scenario.py`; margin/liquidity stubs in `src/risk/margin.py`.
+- Integrations: equity runner (`src/main.py`), credit backtester (`src/credit/credit_backtester.py`), intraday CLI (`src/intraday/__main__.py`), and equity aggregator CLI (`src/equities/equity_aggregator_cli.py` with `--risk-check`) perform pre-flight checks.
+- Ops: risk warnings/blocks print to console; tie into structured logging/metrics/notifier as needed.
 
 ---
 
